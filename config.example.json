@@ -1,0 +1,133 @@
+{
+	"threads": 10,
+	"coin": "dgn1",
+	"name": "main",
+	"pplns": 90000,
+	"proxy": {
+		"enabled": true,
+		"listen": "0.0.0.0:8888",
+		"limitHeadersSize": 1024,
+		"limitBodySize": 256,
+		"behindReverseProxy": false,
+		"blockRefreshInterval": "120ms",
+		"stateUpdateInterval": "3s",
+		"difficulty":2000000000,
+
+
+		"hashrateExpiration": "3h",
+
+		"healthCheck": true,
+		"maxFails": 100,
+
+		"stratum": {
+			"enabled": true,
+			"listen": "0.0.0.0:8008",
+			"timeout": "120s",
+			"maxConn": 8192
+		},
+
+		"policy": {
+			"workers": 8,
+			"resetInterval": "60m",
+			"refreshInterval": "1m",
+
+			"banning": {
+				"enabled": false,
+				"ipset": "blacklist",
+				"timeout": 1800,
+				"invalidPercent": 30,
+				"checkThreshold": 30,
+				"malformedLimit": 5
+			},
+			"limits": {
+				"enabled": false,
+				"limit": 30,
+				"grace": "5m",
+				"limitJump": 10
+			}
+		}
+	},
+
+	"api": {
+		"enabled": true,
+		"purgeOnly": false,
+		"purgeInterval": "10m",
+		"listen": "0.0.0.0:8080",
+		"MinerChartsNum": 72,
+		"PoolChartsNum": 72,
+		"PoolChartInterval": "20m",
+		"MinerChartCheckInterval": "1m",
+		"MinerChartInterval": "20m",
+		"MinerPoolTimeout": "3h",
+		"statsCollectInterval": "60s",
+		"hashrateWindow": "30m",
+		"hashrateLargeWindow": "3h",
+		"luckWindow": [64, 128, 256],
+		"payments": 30,
+		"blocks": 50
+	},
+
+	"upstreamCheckInterval": "5s",
+	"upstream": [
+		{
+			"name": "main",
+			"url": "http://127.0.0.1:8545",
+			"timeout": "10s"
+		},
+		{
+			"name": "backup",
+			"url": "http://127.0.0.2:8545",
+			"timeout": "10s"
+		}
+	],
+
+	"redis": {
+		"endpoint": "127.0.0.1:7000",
+		"poolSize": 10,
+		"database": 0,
+		"password": ""
+	},
+
+	"mysql": {
+		"endpoint": "127.0.0.1",
+		"user": "root",
+		"password": "",
+		"poolSize": 10,
+		"port": 3308,
+		"database": "pool"
+
+	},
+
+	"unlocker": {
+		"enabled": true,
+		"poolFee": 0.4,
+		"poolFeeAddress": "0xb05146ed865f0ab592dd763bd84a2191700f3dfb",
+		"donate": false,
+		"depth": 60,
+		"immatureDepth": 20,
+		"keepTxFees": false,
+		"interval": "5m",
+		"daemon": "http://127.0.0.1:8545",
+		"timeout": "10s"
+	},
+
+	"payouts": {
+		"enabled": true,
+		"requirePeers": 3,
+		"interval": "1m",
+		"daemon": "http://127.0.0.1:8545",
+		"timeout": "10s",
+		"address": "0x30482875c734452dee589ce820d9cca59e537f01",
+		"gas": "21000",
+		"gasPrice": "50000000000",
+		"autoGas": true,
+		"threshold": 500000000,
+		"bgsave": false,
+		"ConcurrentTx": 3
+	},
+
+	"newrelicEnabled": false,
+	"newrelicName": "MyPool",
+	"newrelicKey": "SECRET_KEY",
+	"newrelicVerbose": false
+}

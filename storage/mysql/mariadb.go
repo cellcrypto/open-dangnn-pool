@@ -3,10 +3,10 @@ package mysql
 import (
 	"database/sql"
 	"fmt"
-	"github.com/cellcrypto/open-ethereum-pool/storage/redis"
-	"github.com/cellcrypto/open-ethereum-pool/storage/types"
-	"github.com/cellcrypto/open-ethereum-pool/util"
-	"github.com/cellcrypto/open-ethereum-pool/util/plogger"
+	"github.com/cellcrypto/open-dangnn-pool/storage/redis"
+	"github.com/cellcrypto/open-dangnn-pool/storage/types"
+	"github.com/cellcrypto/open-dangnn-pool/util"
+	"github.com/cellcrypto/open-dangnn-pool/util/plogger"
 	"github.com/ethereum/go-ethereum/common/math"
 	_ "github.com/go-sql-driver/mysql"
 	"log"
@@ -36,6 +36,7 @@ type Database struct {
 }
 
 type Payees struct {
+	Coin string
 	Addr string
 	Balance int64
 	Payout_limit int64
@@ -167,40 +168,6 @@ func (d *Database) WriteShare(login, id string, params []string, diff int64, hei
 	return nil
 }
 
-func (d *Database) WriteRoundShare(height uint64, nonce string, totalshares map[string]int64)  {
-	var (
-		insertCnt = 0
-		insertSql strings.Builder
-	)
-
-	conn := d.Conn
-
-	for k, v := range totalshares {
-		if insertCnt == 0 {
-			insertSql.Reset()
-			insertSql.WriteString( fmt.Sprintf("INSERT INTO share(height,nonce,addr,count) VALUES (\"%v\",\"%v\",\"%v\",\"%v\")", height, nonce, k, v) )
-		} else {
-			insertSql.WriteString( fmt.Sprintf(",(\"%v\",\"%v\",\"%v\",\"%v\")", height, nonce, k, v) )
-		}
-		insertCnt++
-
-		if insertCnt > constInsertCountSqlMax {
-			_, err := conn.Exec(insertSql.String())
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			insertCnt = 0
-		}
-	}
-
-	if insertCnt > 0 {
-		_, err := conn.Exec(insertSql.String())
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-}
 
 func (d *Database) WriteCandidates(height uint64, params []string, nowTime string, roundDiff int64, totalShares int64)  {
 	conn := d.Conn
@@ -994,7 +961,7 @@ func (d *Database) convertBlockResults(state int, height int64, roundHeight int6
 
 func (d *Database) GetPayees(max string) ([]*Payees, error) {
 	conn := d.Conn
-	rows, err := conn.Query("SELECT login_addr, balance, payout_limit FROM miner_info WHERE balance > ? AND balance > payout_limit", max)
+	rows, err := conn.Query("SELECT coin,login_addr, balance, payout_limit FROM miner_info WHERE balance > ? AND balance > payout_limit", max)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1003,18 +970,20 @@ func (d *Database) GetPayees(max string) ([]*Payees, error) {
 	var result []*Payees
 	for rows.Next() {
 		var (
+			coin string
 			loginAddr string
 			balance     int64
 			payoutLimit int64
 		)
 
-		err := rows.Scan(&loginAddr, &balance, &payoutLimit)
+		err := rows.Scan(&coin, &loginAddr, &balance, &payoutLimit)
 		if err != nil {
 			log.Printf("mysql GetPayees:rows.Scan() error: %v",err)
 			return nil, err
 		}
 
 		result = append(result, &Payees{
+			Coin: 		  coin,
 			Addr:         loginAddr,
 			Balance:      balance,
 			Payout_limit: payoutLimit,
@@ -1025,7 +994,7 @@ func (d *Database) GetPayees(max string) ([]*Payees, error) {
 }
 
 // UpdateBalance Confirm the reward coin with the miner's wallet address.
-func (d *Database) UpdateBalance(login string, amount int64) (int, error) {
+func (d *Database) UpdateBalance(login string, amount int64, coin string) (int, error) {
 	conn := d.Conn
 
 	ts := util.MakeTimestamp()
@@ -1037,7 +1006,7 @@ func (d *Database) UpdateBalance(login string, amount int64) (int, error) {
 	defer tx.Rollback()
 	ret, err := tx.Exec(
 		"UPDATE miner_info SET payout_lock=?,balance=balance-?,pending=pending+? WHERE coin=? AND login_addr=? AND payout_lock = 0",
-		ts, amount, amount, d.Config.Coin, login)
+		ts, amount, amount, coin, login)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1052,7 +1021,7 @@ func (d *Database) UpdateBalance(login string, amount int64) (int, error) {
 
 	_, err = tx.Exec(
 		"UPDATE finances SET balance=balance-?,pending=pending+? WHERE coin=?",
-		amount, amount, d.Config.Coin)
+		amount, amount, coin)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1067,7 +1036,7 @@ func (d *Database) UpdateBalance(login string, amount int64) (int, error) {
 	return 0, nil
 }
 
-func (d *Database) WritePayment(login, txHash string, amount int64) error {
+func (d *Database) WritePayment(login, txHash string, amount int64, coin string) error {
 	conn := d.Conn
 
 	tx, err := conn.Begin()
@@ -1077,13 +1046,13 @@ func (d *Database) WritePayment(login, txHash string, amount int64) error {
 	defer tx.Rollback()
 	ret, err := tx.Exec(
 		"UPDATE miner_info SET payout_lock=?,pending=pending-?,paid=paid+?,payout_cnt=payout_cnt+1 WHERE coin=? AND login_addr=? AND payout_lock > 0",
-		0, amount, amount, d.Config.Coin, login)
+		0, amount, amount, coin, login)
 	if err != nil {
 		log.Fatal(err)
 	}
 	_, err = tx.Exec(
 		"UPDATE finances SET pending=pending-?,paid=paid+?,payout_cnt=payout_cnt+1 WHERE coin=?",
-		amount, amount, d.Config.Coin)
+		amount, amount, coin)
 	if err != nil {
 		log.Fatal(err)
 	}

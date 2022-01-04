@@ -2,7 +2,7 @@ package redis
 
 import (
 	"fmt"
-	"github.com/cellcrypto/open-ethereum-pool/storage/types"
+	"github.com/cellcrypto/open-dangnn-pool/storage/types"
 
 	"math"
 	"math/big"
@@ -12,7 +12,7 @@ import (
 
 	"gopkg.in/redis.v3"
 
-	"github.com/cellcrypto/open-ethereum-pool/util"
+	"github.com/cellcrypto/open-dangnn-pool/util"
 )
 
 type Config struct {

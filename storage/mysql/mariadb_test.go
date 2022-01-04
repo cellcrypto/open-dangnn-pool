@@ -1,9 +1,9 @@
 package mysql
 
 import (
-	"github.com/cellcrypto/open-ethereum-pool/rpc"
-	"github.com/cellcrypto/open-ethereum-pool/storage/types"
-	"github.com/cellcrypto/open-ethereum-pool/util"
+	"github.com/cellcrypto/open-dangnn-pool/rpc"
+	"github.com/cellcrypto/open-dangnn-pool/storage/types"
+	"github.com/cellcrypto/open-dangnn-pool/util"
 	"math/big"
 	"os"
 	"strconv"

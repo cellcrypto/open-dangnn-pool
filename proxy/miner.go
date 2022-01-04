@@ -1,12 +1,12 @@
 package proxy
 
 import (
-	"github.com/cellcrypto/open-ethereum-pool/util"
 	"log"
 	"math/big"
 	"strconv"
 	"strings"
 
+	"github.com/cellcrypto/open-dangnn-pool/util"
 	"github.com/ethereum/ethash"
 	"github.com/ethereum/go-ethereum/common"
 )

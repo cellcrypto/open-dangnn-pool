@@ -2,7 +2,7 @@ package policy
 
 import (
 	"fmt"
-	"github.com/cellcrypto/open-ethereum-pool/storage/redis"
+	"github.com/cellcrypto/open-dangnn-pool/storage/redis"
 	"log"
 	"os/exec"
 	"strings"
@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cellcrypto/open-ethereum-pool/util"
+	"github.com/cellcrypto/open-dangnn-pool/util"
 )
 
 type Config struct {

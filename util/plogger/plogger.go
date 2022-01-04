@@ -153,7 +153,6 @@ func (l *Logger) insertLog(msg Msg) {
 }
 
 func (l *Logger) doWork(id int, msg Msg) {
-
 	l.insertLog(msg)
 	if l.InsertCnt > insertSize {
 		l.Save(id, insertSize)

@@ -1,7 +1,7 @@
 package types
 
 import (
-	"github.com/cellcrypto/open-ethereum-pool/util"
+	"github.com/cellcrypto/open-dangnn-pool/util"
 	"github.com/ethereum/go-ethereum/common/math"
 	"math/big"
 )

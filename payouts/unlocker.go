@@ -2,19 +2,19 @@ package payouts
 
 import (
 	"fmt"
-	"github.com/cellcrypto/open-ethereum-pool/hook"
-	"github.com/cellcrypto/open-ethereum-pool/storage/mysql"
-	"github.com/cellcrypto/open-ethereum-pool/storage/redis"
-	"github.com/cellcrypto/open-ethereum-pool/storage/types"
-	"github.com/cellcrypto/open-ethereum-pool/util/plogger"
+	"github.com/cellcrypto/open-dangnn-pool/hook"
+	"github.com/cellcrypto/open-dangnn-pool/storage/mysql"
+	"github.com/cellcrypto/open-dangnn-pool/storage/redis"
+	"github.com/cellcrypto/open-dangnn-pool/storage/types"
+	"github.com/cellcrypto/open-dangnn-pool/util/plogger"
 	"log"
 	"math/big"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/cellcrypto/open-ethereum-pool/rpc"
-	"github.com/cellcrypto/open-ethereum-pool/util"
+	"github.com/cellcrypto/open-dangnn-pool/rpc"
+	"github.com/cellcrypto/open-dangnn-pool/util"
 )
 
 type UnlockerConfig struct {

@@ -9,7 +9,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/cellcrypto/open-ethereum-pool/util"
+	"github.com/cellcrypto/open-dangnn-pool/util"
 )
 
 const (

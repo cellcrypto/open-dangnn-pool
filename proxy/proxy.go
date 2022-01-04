@@ -2,8 +2,6 @@ package proxy
 
 import (
 	"encoding/json"
-	"github.com/cellcrypto/open-ethereum-pool/storage/mysql"
-	"github.com/cellcrypto/open-ethereum-pool/storage/redis"
 	"io"
 	"log"
 	"net"
@@ -15,9 +13,11 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/cellcrypto/open-ethereum-pool/policy"
-	"github.com/cellcrypto/open-ethereum-pool/rpc"
-	"github.com/cellcrypto/open-ethereum-pool/util"
+	"github.com/cellcrypto/open-dangnn-pool/policy"
+	"github.com/cellcrypto/open-dangnn-pool/rpc"
+	"github.com/cellcrypto/open-dangnn-pool/storage/mysql"
+	"github.com/cellcrypto/open-dangnn-pool/storage/redis"
+	"github.com/cellcrypto/open-dangnn-pool/util"
 )
 
 type ProxyServer struct {

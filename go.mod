@@ -1,4 +1,4 @@
-module github.com/cellcrypto/open-ethereum-pool
+module github.com/cellcrypto/open-dangnn-pool
 
 go 1.17
 

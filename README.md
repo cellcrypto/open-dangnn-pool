@@ -46,15 +46,15 @@ First install  [go-ethereum](https://github.com/ethereum/go-ethereum/wiki/Instal
 Clone & compile:
 
     git config --global http.https://gopkg.in.followRedirects true
-    git clone https://github.com/cellcrypto/open-ethereum-pool.git
-    cd open-ethereum-pool
+    git clone https://github.com/cellcrypto/open-dangnn-pool.git
+    cd open-dangnn-pool
     make
 
 Install redis-server.
 
 ### Running Pool
 
-    ./build/bin/open-ethereum-pool config.json
+    ./build/bin/open-dangnn-pool config.json
 
 You can use Ubuntu upstart - check for sample config in <code>upstart.conf</code>.
 

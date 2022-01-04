@@ -1,12 +1,12 @@
 package payouts
 
 import (
-	"github.com/cellcrypto/open-ethereum-pool/storage/types"
+	"github.com/cellcrypto/open-dangnn-pool/storage/types"
 	"math/big"
 	"os"
 	"testing"
 
-	"github.com/cellcrypto/open-ethereum-pool/rpc"
+	"github.com/cellcrypto/open-dangnn-pool/rpc"
 )
 
 func TestMain(m *testing.M) {

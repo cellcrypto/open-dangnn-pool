@@ -1,11 +1,11 @@
 package proxy
 
 import (
-	"github.com/cellcrypto/open-ethereum-pool/api"
-	"github.com/cellcrypto/open-ethereum-pool/payouts"
-	"github.com/cellcrypto/open-ethereum-pool/policy"
-	"github.com/cellcrypto/open-ethereum-pool/storage/mysql"
-	"github.com/cellcrypto/open-ethereum-pool/storage/redis"
+	"github.com/cellcrypto/open-dangnn-pool/api"
+	"github.com/cellcrypto/open-dangnn-pool/payouts"
+	"github.com/cellcrypto/open-dangnn-pool/policy"
+	"github.com/cellcrypto/open-dangnn-pool/storage/mysql"
+	"github.com/cellcrypto/open-dangnn-pool/storage/redis"
 )
 
 type Config struct {

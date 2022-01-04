@@ -2,10 +2,10 @@ package payouts
 
 import (
 	"fmt"
-	"github.com/cellcrypto/open-ethereum-pool/hook"
-	"github.com/cellcrypto/open-ethereum-pool/storage/mysql"
-	"github.com/cellcrypto/open-ethereum-pool/storage/redis"
-	"github.com/cellcrypto/open-ethereum-pool/util/plogger"
+	"github.com/cellcrypto/open-dangnn-pool/hook"
+	"github.com/cellcrypto/open-dangnn-pool/storage/mysql"
+	"github.com/cellcrypto/open-dangnn-pool/storage/redis"
+	"github.com/cellcrypto/open-dangnn-pool/util/plogger"
 	"log"
 	"math/big"
 	"os"
@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cellcrypto/open-ethereum-pool/rpc"
-	"github.com/cellcrypto/open-ethereum-pool/util"
+	"github.com/cellcrypto/open-dangnn-pool/rpc"
+	"github.com/cellcrypto/open-dangnn-pool/util"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
@@ -181,7 +181,7 @@ func (u *PayoutsProcessor) process() {
 
 	for _, payee := range payees {
 		// amount, _ := u.backend.GetBalance(payee.Addr)
-		amount, login := payee.Balance, payee.Addr
+		amount, login , coin := payee.Balance, payee.Addr, payee.Coin
 		amountInShannon := big.NewInt(amount)
 
 		// Shannon^2 = Wei
@@ -230,7 +230,7 @@ func (u *PayoutsProcessor) process() {
 		log.Printf("Locked payment for %s, %v Shannon", login, amount)
 		// Lock payments for current payout
 		// Debit miner's balance and update stats
-		ret, err := u.db.UpdateBalance(login, amount)
+		ret, err := u.db.UpdateBalance(login, amount, coin)
 		if err != nil {
 			//log.Printf("Error: %v Already Locked payment for %s, %v Shannon", err, login, amount)
 			plogger.InsertSystemPaymemtError(plogger.LogTypePaymentWork, login, "",
@@ -270,7 +270,7 @@ func (u *PayoutsProcessor) process() {
 		}
 
 		// Log transaction hash
-		err = u.db.WritePayment(login, txHash, amount)
+		err = u.db.WritePayment(login, txHash, amount, coin)
 		// err = u.backend.WritePayment(login, txHash, amount)
 		if err != nil {
 			//log.Printf("Failed to log payment data for %s, %v Shannon, tx: %s: %v", login, amount, txHash, err)

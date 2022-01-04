@@ -9,8 +9,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 
-	"github.com/cellcrypto/open-ethereum-pool/rpc"
-	"github.com/cellcrypto/open-ethereum-pool/util"
+	"github.com/cellcrypto/open-dangnn-pool/rpc"
+	"github.com/cellcrypto/open-dangnn-pool/util"
 )
 
 const maxBacklog = 3

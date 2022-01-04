@@ -13,9 +13,9 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/cellcrypto/open-ethereum-pool/storage/mysql"
-	"github.com/cellcrypto/open-ethereum-pool/storage/redis"
-	"github.com/cellcrypto/open-ethereum-pool/util"
+	"github.com/cellcrypto/open-dangnn-pool/storage/mysql"
+	"github.com/cellcrypto/open-dangnn-pool/storage/redis"
+	"github.com/cellcrypto/open-dangnn-pool/util"
 )
 
 type ApiConfig struct {
@@ -181,7 +181,7 @@ func (s *ApiServer) listen() {
 	r.HandleFunc("/api/blocks", s.BlocksIndex)
 	r.HandleFunc("/api/payments", s.PaymentsIndex)
 	r.HandleFunc("/api/accounts/{login:0x[0-9a-fA-F]{40}}", s.AccountIndex)
-	r.HandleFunc("/api/accounts/{login:0x[0-9a-fA-F]{40}}/{personal:0x[0-9a-fA-F]{40}}", s.AccountIndexEx)
+	//r.HandleFunc("/api/accounts/{login:0x[0-9a-fA-F]{40}}/{personal:0x[0-9a-fA-F]{40}}", s.AccountIndexEx)
 	r.NotFoundHandler = http.HandlerFunc(notFound)
 	r.Use(authenticationMiddleware )
 
@@ -422,60 +422,60 @@ func (s *ApiServer) AccountIndex(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-
-func (s *ApiServer) AccountIndexEx(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Cache-Control", "no-cache")
-
-	login := strings.ToLower(mux.Vars(r)["login"])
-	s.minersMu.Lock()
-	defer s.minersMu.Unlock()
-
-	reply, ok := s.miners[login]
-	now := util.MakeTimestamp()
-	cacheIntv := int64(s.statsIntv / time.Millisecond)
-	// Refresh stats if stale
-	if !ok || reply.updatedAt < now-cacheIntv {
-		exist, err := s.backend.IsMinerExists(login)
-		if !exist {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			log.Printf("Failed to fetch stats from backend: %v", err)
-			return
-		}
-
-		stats, err := s.backend.GetMinerStats(login, s.config.Payments)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			log.Printf("Failed to fetch stats from backend: %v", err)
-			return
-		}
-		workers, err := s.backend.CollectWorkersStats(s.hashrateWindow, s.hashrateLargeWindow, login)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			log.Printf("Failed to fetch stats from backend: %v", err)
-			return
-		}
-		for key, value := range workers {
-			stats[key] = value
-		}
-		stats["pageSize"] = s.config.Payments
-		stats["minerCharts"], err = s.backend.GetMinerCharts(s.config.MinerChartsNum, login)
-		//stats["paymentCharts"], err = s.backend.GetPaymentCharts(login)
-		reply = &Entry{stats: stats, updatedAt: now}
-		s.miners[login] = reply
-	}
-
-	w.WriteHeader(http.StatusOK)
-	err := json.NewEncoder(w).Encode(reply.stats)
-	if err != nil {
-		log.Println("Error serializing API response: ", err)
-	}
-}
+//
+//func (s *ApiServer) AccountIndexEx(w http.ResponseWriter, r *http.Request) {
+//	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+//	w.Header().Set("Access-Control-Allow-Origin", "*")
+//	w.Header().Set("Cache-Control", "no-cache")
+//
+//	login := strings.ToLower(mux.Vars(r)["login"])
+//	s.minersMu.Lock()
+//	defer s.minersMu.Unlock()
+//
+//	reply, ok := s.miners[login]
+//	now := util.MakeTimestamp()
+//	cacheIntv := int64(s.statsIntv / time.Millisecond)
+//	// Refresh stats if stale
+//	if !ok || reply.updatedAt < now-cacheIntv {
+//		exist, err := s.backend.IsMinerExists(login)
+//		if !exist {
+//			w.WriteHeader(http.StatusNotFound)
+//			return
+//		}
+//		if err != nil {
+//			w.WriteHeader(http.StatusInternalServerError)
+//			log.Printf("Failed to fetch stats from backend: %v", err)
+//			return
+//		}
+//
+//		stats, err := s.backend.GetMinerStats(login, s.config.Payments)
+//		if err != nil {
+//			w.WriteHeader(http.StatusInternalServerError)
+//			log.Printf("Failed to fetch stats from backend: %v", err)
+//			return
+//		}
+//		workers, err := s.backend.CollectWorkersStats(s.hashrateWindow, s.hashrateLargeWindow, login)
+//		if err != nil {
+//			w.WriteHeader(http.StatusInternalServerError)
+//			log.Printf("Failed to fetch stats from backend: %v", err)
+//			return
+//		}
+//		for key, value := range workers {
+//			stats[key] = value
+//		}
+//		stats["pageSize"] = s.config.Payments
+//		stats["minerCharts"], err = s.backend.GetMinerCharts(s.config.MinerChartsNum, login)
+//		//stats["paymentCharts"], err = s.backend.GetPaymentCharts(login)
+//		reply = &Entry{stats: stats, updatedAt: now}
+//		s.miners[login] = reply
+//	}
+//
+//	w.WriteHeader(http.StatusOK)
+//	err := json.NewEncoder(w).Encode(reply.stats)
+//	if err != nil {
+//		log.Println("Error serializing API response: ", err)
+//	}
+//}
 
 
 func (s *ApiServer) getStats() map[string]interface{} {
@@ -510,8 +510,8 @@ func (s *ApiServer) collectMinerCharts(login string, hash int64, largeHash int64
 	t2 := fmt.Sprintf("%d-%02d-%02d %02d_%02d", year, month, day, hour, min)
 
 	log.Println("Miner "+login+" Hash is", ts, t2, hash, largeHash, share, report)
-	s.db.WriteMinerCharts(ts, t2, login, hash, largeHash, workerOnline, share, report)
-	err := s.backend.WriteMinerCharts(ts, t2, login, hash, largeHash, workerOnline, share, report)
+	err := s.db.WriteMinerCharts(ts, t2, login, hash, largeHash, workerOnline, share, report)
+	// err := s.backend.WriteMinerCharts(ts, t2, login, hash, largeHash, workerOnline, share, report)
 	if err != nil {
 		log.Printf("Failed to fetch miner %v charts from backend: %v", login, err)
 	}

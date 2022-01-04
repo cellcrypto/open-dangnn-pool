@@ -4,7 +4,7 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/cellcrypto/open-ethereum-pool/hook"
+	"github.com/cellcrypto/open-dangnn-pool/hook"
 	"log"
 	"math/rand"
 	"os"
@@ -14,12 +14,12 @@ import (
 
 	"github.com/yvasiyarov/gorelic"
 
-	"github.com/cellcrypto/open-ethereum-pool/api"
-	"github.com/cellcrypto/open-ethereum-pool/payouts"
-	"github.com/cellcrypto/open-ethereum-pool/proxy"
-	"github.com/cellcrypto/open-ethereum-pool/storage/mysql"
-	"github.com/cellcrypto/open-ethereum-pool/storage/redis"
-	"github.com/cellcrypto/open-ethereum-pool/util/plogger"
+	"github.com/cellcrypto/open-dangnn-pool/api"
+	"github.com/cellcrypto/open-dangnn-pool/payouts"
+	"github.com/cellcrypto/open-dangnn-pool/proxy"
+	"github.com/cellcrypto/open-dangnn-pool/storage/mysql"
+	"github.com/cellcrypto/open-dangnn-pool/storage/redis"
+	"github.com/cellcrypto/open-dangnn-pool/util/plogger"
 )
 
 var cfg proxy.Config

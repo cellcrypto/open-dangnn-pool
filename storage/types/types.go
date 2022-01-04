@@ -53,7 +53,7 @@ type CreditsImmatrue struct {
 }
 
 var (
-	GenesisReword =   math.MustParseBig256("300000000000000000000")
+	GenesisReword =   math.MustParseBig256("3000000000000000000")	// 300DGC = 3ETH
 	DiffByShareValue = int64(2000000000)
 )
 

@@ -1082,7 +1082,7 @@ func (d *Database) WritePayment(login, txHash string, amount int64) error {
 		log.Fatal(err)
 	}
 	_, err = tx.Exec(
-		"UPDATE finances SET balance=balance-?,pending=pending+?,payout_cnt=payout_cnt+1 WHERE coin=?",
+		"UPDATE finances SET pending=pending-?,paid=paid+?,payout_cnt=payout_cnt+1 WHERE coin=?",
 		amount, amount, d.Config.Coin)
 	if err != nil {
 		log.Fatal(err)

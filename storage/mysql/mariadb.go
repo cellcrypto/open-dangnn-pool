@@ -43,6 +43,7 @@ type Payees struct {
 }
 
 type MinerChartSelect struct {
+	Coin			string
 	Addr 			string
 	Share			int
 	ShareCheckTime 	int64
@@ -79,6 +80,7 @@ func New(cfg *Config, proxyDiff int64,redis *redis.RedisClient) (*Database, erro
 		cfg.UserName, cfg.Password, cfg.Endpoint, cfg.Port, cfg.Database)
 	conn, err := sql.Open("mysql", url)
 	if err != nil {
+		println(err)
 		return nil, err
 	}
 
@@ -169,7 +171,7 @@ func (d *Database) WriteShare(login, id string, params []string, diff int64, hei
 }
 
 
-func (d *Database) WriteCandidates(height uint64, params []string, nowTime string, roundDiff int64, totalShares int64)  {
+func (d *Database) WriteCandidates(height uint64, params []string, nowTime string,ts int64, roundDiff int64, totalShares int64)  {
 	conn := d.Conn
 
 	tx, err := conn.Begin()
@@ -178,8 +180,8 @@ func (d *Database) WriteCandidates(height uint64, params []string, nowTime strin
 	}
 	defer tx.Rollback()
 	_, err = tx.Exec(
-		"INSERT INTO blocks(`state`,`round_height`,`nonce`,`hash_no_nonce`,`mix_digest`,`round_diff`,`total_share`,`insert_time`) VALUES (?,?,?,?,?,?,?,?)",
-		constCandidatesBlock, height, params[0], params[1], params[2], roundDiff, totalShares, nowTime)
+		"INSERT INTO blocks(`state`, `coin`,`round_height`,`nonce`,`height`,`hash_no_nonce`,`mix_digest`,`round_diff`,`total_share`,`timestamp`,`insert_time`) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+		constCandidatesBlock, d.Config.Coin, height, params[0], height, params[1], params[2], roundDiff, totalShares, ts, nowTime)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -194,7 +196,7 @@ func (d *Database) WriteCandidates(height uint64, params []string, nowTime strin
 func (d *Database) GetCandidates(maxHeight int64) ([]*types.BlockData, error) {
 	conn := d.Conn
 
-	rows, err := conn.Query("SELECT round_height,nonce,hash_no_nonce,mix_digest,round_diff,total_share,insert_time FROM blocks WHERE state=0 AND round_height < ?",maxHeight)
+	rows, err := conn.Query("SELECT round_height,nonce,hash_no_nonce,mix_digest,round_diff,total_share,insert_time FROM blocks WHERE state=0 AND coin=? AND round_height < ?", d.Config.Coin, maxHeight)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -269,8 +271,8 @@ func (d *Database) writePendingOrphans(block *types.BlockData) error {
 		log.Fatal(err)
 	}
 	defer tx.Rollback()
-	ret, err := tx.Exec("UPDATE blocks SET `state`=?,`height`=?,`uncle_height`=?,`orphan`=?,`hash`=?,`timestamp`=?,`diff`=?,`reward`=? WHERE state=0 AND round_height=?",
-		constPeddingImmaturedBlock, block.Height,block.UncleHeight, block.Orphan, block.SerializeHash(), block.Timestamp, block.Difficulty, block.TotalShares, block.Reward.String(), block.RoundHeight)
+	ret, err := tx.Exec("UPDATE blocks SET `state`=?,`height`=?,`uncle_height`=?,`orphan`=?,`hash`=?,`timestamp`=?,`diff`=?,`reward`=? WHERE state=0 AND round_height=? AND nonce=? AND coin=?",
+		constPeddingImmaturedBlock, block.Height,block.UncleHeight, block.Orphan, block.SerializeHash(), block.Timestamp, block.Difficulty, block.TotalShares, block.Reward.String(), block.RoundHeight, block.Nonce, d.Config.Coin)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -295,7 +297,7 @@ func (d *Database) WriteImmatureError(block *types.BlockData, blockState int, er
 	case 2: errState = constImmaturedBlockErr
 	}
 
-	_, err := conn.Exec("UPDATE blocks SET `state`=? WHERE state=? AND round_height=? AND nonce=?", errState, blockState, block.RoundHeight, block.Nonce)
+	_, err := conn.Exec("UPDATE blocks SET `state`=? WHERE state=? AND round_height=? AND nonce=? and coin=?", errState, blockState, block.RoundHeight, block.Nonce, d.Config.Coin)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -397,7 +399,7 @@ func (d *Database) writeImmatureReward(block *types.BlockData, roundRewards map[
 
 		if insertCnt > constInsertCountSqlMax {
 			minerRewardSql.WriteString( fmt.Sprintf(" ON DUPLICATE KEY UPDATE immature=immature+VALUE(immature)") )
-			blocksInfoSql = fmt.Sprintf("UPDATE blocks SET total_immatured_cnt=%v, total_immatured=%v WHERE state=%v AND round_height=%v AND nonce=\"%v\"", count, total, constImmatureBlock, block.RoundHeight, block.Nonce)
+			blocksInfoSql = fmt.Sprintf("UPDATE blocks SET total_immatured_cnt=%v, total_immatured=%v WHERE state=%v AND round_height=%v AND nonce=\"%v\" AND coin=\"%v\"", count, total, constImmatureBlock, block.RoundHeight, block.Nonce, d.Config.Coin)
 			err := d.insertImmaturedBlock(minerRewardSql.String(), creditsRewardSql.String(), blocksInfoSql)
 			if err != nil {
 				return total - insertCnt, err
@@ -413,7 +415,7 @@ func (d *Database) writeImmatureReward(block *types.BlockData, roundRewards map[
 
 	if insertCnt > 0 {
 		minerRewardSql.WriteString( fmt.Sprintf(" ON DUPLICATE KEY UPDATE immature=immature+VALUE(immature)") )
-		blocksInfoSql = fmt.Sprintf("UPDATE blocks SET total_immatured_cnt=%v, total_immatured=%v WHERE state=%v AND round_height=%v AND nonce=\"%v\"", count, total, constImmatureBlock, block.RoundHeight, block.Nonce)
+		blocksInfoSql = fmt.Sprintf("UPDATE blocks SET total_immatured_cnt=%v, total_immatured=%v WHERE state=%v AND round_height=%v AND nonce=\"%v\" AND coin=\"%v\"", count, total, constImmatureBlock, block.RoundHeight, block.Nonce, d.Config.Coin)
 		err := d.insertImmaturedBlock(minerRewardSql.String(), creditsRewardSql.String(), blocksInfoSql)
 		if err != nil {
 			return total - insertCnt, err
@@ -435,8 +437,8 @@ func (d *Database) writeImmatureBlock(block *types.BlockData) error {
 	}
 	defer tx.Rollback()
 	ret, err := tx.Exec(
-		"UPDATE blocks SET `state`=?,`height`=?,`uncle_height`=?,`orphan`=?,`hash`=?,`timestamp`=?,`reward`=? WHERE state=0 AND round_height=? AND nonce=?",
-		constImmatureBlock, block.Height,block.UncleHeight, block.Orphan, block.SerializeHash(), block.Timestamp, block.Reward.String(), block.RoundHeight, block.Nonce)
+		"UPDATE blocks SET `state`=?,`height`=?,`uncle_height`=?,`orphan`=?,`hash`=?,`timestamp`=?,`reward`=? WHERE state=0 AND round_height=? AND nonce=? AND coin=?",
+		constImmatureBlock, block.Height,block.UncleHeight, block.Orphan, block.SerializeHash(), block.Timestamp, block.Reward.String(), block.RoundHeight, block.Nonce, d.Config.Coin)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -489,7 +491,7 @@ func (d *Database) insertImmaturedBlock(minerRewardSql string, creditsRewardSql 
 func (d *Database) GetImmatureBlocks(maxHeight int64) ([]*types.BlockData, error) {
 	conn := d.Conn
 
-	rows, err := conn.Query("SELECT state,round_height,height,uncle_height,orphan,nonce,hash,`timestamp`,round_diff,total_share,reward FROM blocks WHERE state in (?,?) AND round_height < ?",constImmatureBlock, constPeddingImmaturedBlock,maxHeight)
+	rows, err := conn.Query("SELECT state,round_height,height,uncle_height,orphan,nonce,hash,`timestamp`,round_diff,total_share,reward FROM blocks WHERE state in (?,?) AND round_height < ? AND coin=?",constImmatureBlock, constPeddingImmaturedBlock, maxHeight, d.Config.Coin)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -530,8 +532,8 @@ func (d *Database) writeOrphans(block *types.BlockData) error {
 	}
 	defer tx.Rollback()
 	ret, err := tx.Exec(
-		"UPDATE blocks SET `state`=?,`height`=?,`uncle_height`=?,`orphan`=?,`hash`=?,`timestamp`=?,`diff`=?,`reward`=? WHERE state=? AND round_height=? AND nonce=?",
-		constOrphanBlock, block.Height,block.UncleHeight, block.Orphan, block.SerializeHash(), block.Timestamp, block.Difficulty, block.TotalShares, block.Reward, block.State, block.RoundHeight, block.Nonce)
+		"UPDATE blocks SET `state`=?,`height`=?,`uncle_height`=?,`orphan`=?,`hash`=?,`timestamp`=?,`diff`=?,`reward`=? WHERE state=? AND round_height=? AND nonce=? AND coin=?",
+		constOrphanBlock, block.Height,block.UncleHeight, block.Orphan, block.SerializeHash(), block.Timestamp, block.Difficulty, block.TotalShares, block.Reward, block.State, block.RoundHeight, block.Nonce, d.Config.Coin)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -755,8 +757,8 @@ func (d *Database) writeMaturedBlock(block *types.BlockData, creditsBalanceSql, 
 	}
 
 	// blocksInfoSql = fmt.Sprintf("UPDATE blocks SET state=? WHERE state=? AND round_height=? AND nonce=?")
-	_, err = txRound.Exec("UPDATE blocks SET `state`=?,`height`=?,`uncle_height`=?,`orphan`=?,`hash`=?,`timestamp`=?,`diff`=?, `reward`=? WHERE state=? AND round_height=? AND nonce=?",
-		constMatureBlock, block.Height,	block.UncleHeight, block.Orphan, block.SerializeHash(), block.Timestamp, block.Difficulty, block.Reward.String(), block.State, block.RoundHeight, block.Nonce)
+	_, err = txRound.Exec("UPDATE blocks SET `state`=?,`height`=?,`uncle_height`=?,`orphan`=?,`hash`=?,`timestamp`=?,`diff`=?, `reward`=? WHERE state=? AND round_height=? AND nonce=? AND coin=?",
+		constMatureBlock, block.Height,	block.UncleHeight, block.Orphan, block.SerializeHash(), block.Timestamp, block.Difficulty, block.Reward.String(), block.State, block.RoundHeight, block.Nonce, d.Config.Coin)
 	if err != nil {
 		return err
 	}
@@ -795,7 +797,7 @@ func (d *Database) WriteMaturedBlock(block *types.BlockData, roundRewards map[st
 
 func (d *Database) CollectStats(maxBlocks int64) ([]*types.BlockData, []*types.BlockData, []*types.BlockData, int, []map[string]interface{}, int64, error) {
 	conn := d.Conn
-	rows, err := conn.Query("SELECT state,round_height,height,uncle_height,orphan,nonce,hash,`timestamp`,round_diff,total_share,reward FROM blocks WHERE state in (?,?) ORDER BY height DESC", constCandidatesBlock, constImmatureBlock)
+	rows, err := conn.Query("SELECT state,round_height,height,uncle_height,orphan,nonce,hash,`timestamp`,round_diff,total_share,reward FROM blocks WHERE state in (?,?) AND coin=? ORDER BY height DESC", constCandidatesBlock, constImmatureBlock, d.Config.Coin)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -881,7 +883,7 @@ func (d *Database) CollectStats(maxBlocks int64) ([]*types.BlockData, []*types.B
 
 func (d *Database) CollectLuckStats(windowMax int64) ([]*types.BlockData,error) {
 	conn := d.Conn
-	rows, err := conn.Query("SELECT state,round_height,height,uncle_height,orphan,nonce,hash,`timestamp`,round_diff,total_share,reward FROM blocks WHERE state=? ORDER BY height DESC", constImmatureBlock)
+	rows, err := conn.Query("SELECT state,round_height,height,uncle_height,orphan,nonce,hash,`timestamp`,round_diff,total_share,reward FROM blocks WHERE state=? AND coin=? ORDER BY height DESC", constImmatureBlock, d.Config.Coin)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -909,7 +911,7 @@ func (d *Database) CollectLuckStats(windowMax int64) ([]*types.BlockData,error) 
 		result = append(result, &block)
 	}
 
-	rows2, err := conn.Query("SELECT state,round_height,height,uncle_height,orphan,nonce,hash,`timestamp`,round_diff,total_share,reward FROM blocks WHERE state=? ORDER BY height DESC LIMIT ?", constMatureBlock, windowMax)
+	rows2, err := conn.Query("SELECT state,round_height,height,uncle_height,orphan,nonce,hash,`timestamp`,round_diff,total_share,reward FROM blocks WHERE state=? AND coin=? ORDER BY height DESC LIMIT ?", constMatureBlock, d.Config.Coin, windowMax)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -961,7 +963,7 @@ func (d *Database) convertBlockResults(state int, height int64, roundHeight int6
 
 func (d *Database) GetPayees(max string) ([]*Payees, error) {
 	conn := d.Conn
-	rows, err := conn.Query("SELECT coin,login_addr, balance, payout_limit FROM miner_info WHERE balance > ? AND balance > payout_limit", max)
+	rows, err := conn.Query("SELECT coin,login_addr, balance, payout_limit FROM miner_info WHERE balance > ? AND balance > payout_limit AND coin=?", max, d.Config.Coin)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1036,7 +1038,7 @@ func (d *Database) UpdateBalance(login string, amount int64, coin string) (int, 
 	return 0, nil
 }
 
-func (d *Database) WritePayment(login, txHash string, amount int64, coin string) error {
+func (d *Database) WritePayment(login, txHash string, amount int64, coin string, from string) error {
 	conn := d.Conn
 
 	tx, err := conn.Begin()
@@ -1045,7 +1047,7 @@ func (d *Database) WritePayment(login, txHash string, amount int64, coin string)
 	}
 	defer tx.Rollback()
 	ret, err := tx.Exec(
-		"UPDATE miner_info SET payout_lock=?,pending=pending-?,paid=paid+?,payout_cnt=payout_cnt+1 WHERE coin=? AND login_addr=? AND payout_lock > 0",
+		"UPDATE miner_info SET payout_lock=?,pending=pending-?,paid=paid+?,payout_cnt=payout_cnt+1,payout_last=now() WHERE coin=? AND login_addr=? AND payout_lock > 0",
 		0, amount, amount, coin, login)
 	if err != nil {
 		log.Fatal(err)
@@ -1057,8 +1059,8 @@ func (d *Database) WritePayment(login, txHash string, amount int64, coin string)
 		log.Fatal(err)
 	}
 	_, err = tx.Exec(
-		"INSERT INTO payments_all(login_addr,tx_hash,amount) VALUE (?,?,?)",
-		login, txHash, amount)
+		"INSERT INTO payments_all(login_addr,`from`,tx_hash,amount,coin) VALUE (?,?,?,?,?)",
+		login, from, txHash, amount, d.Config.Coin)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1083,7 +1085,7 @@ func (d *Database) GetAllMinerAccount(duration time.Duration, minerChartIntvSec 
 	nowTime := now.Add(-duration)
 
 	conn := d.Conn
-	rows, err := conn.Query("SELECT login_addr, share, share_check FROM miner_info WHERE last_share > ? AND share_check < ?", nowTime,ts)
+	rows, err := conn.Query("SELECT coin, login_addr, share, share_check FROM miner_info WHERE last_share > ? AND share_check < ? AND coin=?", nowTime, ts, d.Config.Coin)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1092,18 +1094,20 @@ func (d *Database) GetAllMinerAccount(duration time.Duration, minerChartIntvSec 
 	var result []*MinerChartSelect
 	for rows.Next() {
 		var (
+			coin 		string
 			loginAddr  	string
 			share 		int
 			shareCheck 	int64
 		)
 
-		err := rows.Scan(&loginAddr, &share, &shareCheck)
+		err := rows.Scan(&coin, &loginAddr, &share, &shareCheck)
 		if err != nil {
 			log.Printf("mysql GetAllMinerAccount:rows.Scan() error: %v",err)
 			return nil, err
 		}
 
 		result = append(result, &MinerChartSelect{
+			Coin: 			coin,
 			Addr:           loginAddr,
 			Share: 			share,
 			ShareCheckTime: shareCheck,
@@ -1118,7 +1122,7 @@ func (d *Database) CheckTimeMinerCharts(miner *MinerChartSelect, ts int64, miner
 	}
 
 	conn := d.Conn
-	ret,err := conn.Exec("UPDATE miner_info SET share_check=?,share=0 WHERE login_addr=? AND share_check=?", ts, miner.Addr, miner.ShareCheckTime)
+	ret,err := conn.Exec("UPDATE miner_info SET share_check=?,share=0 WHERE login_addr=? AND share_check=? AND coin=?", ts, miner.Addr, miner.ShareCheckTime, miner.Coin)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -70,23 +70,23 @@ func NewPayoutsProcessor(cfg *PayoutsConfig, backend *redis.RedisClient, db *mys
 func (u *PayoutsProcessor) Start() {
 	log.Println("Starting payouts")
 
-	if u.mustResolvePayout() {
-		log.Println("Running with env RESOLVE_PAYOUT=1, now trying to resolve locked payouts")
-		u.resolvePayouts()
-		log.Println("Now you have to restart payouts module with RESOLVE_PAYOUT=0 for normal run")
-		return
-	}
+	//if u.mustResolvePayout() {
+	//	log.Println("Running with env RESOLVE_PAYOUT=1, now trying to resolve locked payouts")
+	//	u.resolvePayouts()
+	//	log.Println("Now you have to restart payouts module with RESOLVE_PAYOUT=0 for normal run")
+	//	return
+	//}
 
 	intv := util.MustParseDuration(u.config.Interval)
 	timer := time.NewTimer(intv)
 	log.Printf("Set payouts interval to %v", intv)
 
-	payments := u.backend.GetPendingPayments()
-	if len(payments) > 0 {
-		log.Printf("Previous payout failed, you have to resolve it. List of failed payments:\n %v",
-			formatPendingPayments(payments))
-		return
-	}
+	//payments := u.backend.GetPendingPayments()
+	//if len(payments) > 0 {
+	//	log.Printf("Previous payout failed, you have to resolve it. List of failed payments:\n %v",
+	//		formatPendingPayments(payments))
+	//	return
+	//}
 
 	locked, err := u.backend.IsPayoutsLocked()
 	if err != nil {
@@ -143,6 +143,10 @@ func (u *PayoutsProcessor) process() {
 	}
 
 	log.Printf("Info: process payout count: %v\n", len(payees))
+
+	if len(payees) == 0 {
+		return
+	}
 
 	//waitingCount := 0
 	//var wg sync.WaitGroup
@@ -270,7 +274,7 @@ func (u *PayoutsProcessor) process() {
 		}
 
 		// Log transaction hash
-		err = u.db.WritePayment(login, txHash, amount, coin)
+		err = u.db.WritePayment(login, txHash, amount, coin, u.config.Address)
 		// err = u.backend.WritePayment(login, txHash, amount)
 		if err != nil {
 			//log.Printf("Failed to log payment data for %s, %v Shannon, tx: %s: %v", login, amount, txHash, err)

@@ -64,7 +64,7 @@ type Worker struct {
 }
 
 type IMysqlDB interface {
-	WriteCandidates(height uint64, params []string, nowTime string, roundDiff int64, totalShares int64)
+	WriteCandidates(height uint64, params []string, nowTime string, ts int64, roundDiff int64, totalShares int64)
 	CollectLuckStats(windowMax int64) ([]*types.BlockData,error)
 	CollectStats(maxBlocks int64) ([]*types.BlockData, []*types.BlockData, []*types.BlockData, int, []map[string]interface{}, int64, error)
 	GetMinerStats(login string, maxPayments int64) (map[string]interface{}, error)
@@ -364,7 +364,7 @@ func (r *RedisClient) WriteBlock(login, id string, params []string, diff, roundD
 			totalShares += n
 		}
 
-		r.mysql.WriteCandidates(height, params, nowTime.Format("2006-01-02 15:04:05.000"), roundDiff, totalShares)
+		r.mysql.WriteCandidates(height, params, nowTime.Format("2006-01-02 15:04:05.000"), ts, roundDiff, totalShares)
 		return false, nil
 	}
 }

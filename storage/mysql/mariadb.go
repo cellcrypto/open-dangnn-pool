@@ -533,7 +533,7 @@ func (d *Database) writeOrphans(block *types.BlockData) error {
 	defer tx.Rollback()
 	ret, err := tx.Exec(
 		"UPDATE blocks SET `state`=?,`height`=?,`uncle_height`=?,`orphan`=?,`hash`=?,`timestamp`=?,`diff`=?,`reward`=? WHERE state=? AND round_height=? AND nonce=? AND coin=?",
-		constOrphanBlock, block.Height,block.UncleHeight, block.Orphan, block.SerializeHash(), block.Timestamp, block.Difficulty, block.TotalShares, block.Reward, block.State, block.RoundHeight, block.Nonce, d.Config.Coin)
+		constOrphanBlock, block.Height,block.UncleHeight, block.Orphan, block.SerializeHash(), block.Timestamp, block.Difficulty, block.Reward, block.State, block.RoundHeight, block.Nonce, d.Config.Coin)
 	if err != nil {
 		log.Fatal(err)
 	}

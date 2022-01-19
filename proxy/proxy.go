@@ -37,6 +37,8 @@ type ProxyServer struct {
 	sessionsMu sync.RWMutex
 	sessions   map[*Session]struct{}
 	timeout    time.Duration
+
+	subMiner map[string]*MinerSubInfo
 }
 
 type ReportedRate struct {
@@ -58,7 +60,7 @@ func NewProxy(cfg *Config, backend *redis.RedisClient, db *mysql.Database) *Prox
 	if len(cfg.Name) == 0 {
 		log.Fatal("You must set instance name")
 	}
-	policy := policy.Start(&cfg.Proxy.Policy, backend)
+	policy := policy.Start(&cfg.Proxy.Policy, backend, db)
 
 	proxy := &ProxyServer{config: cfg, backend: backend, db: db, policy: policy}
 	proxy.diff = util.GetTargetHex(cfg.Proxy.Difficulty)
@@ -76,6 +78,7 @@ func NewProxy(cfg *Config, backend *redis.RedisClient, db *mysql.Database) *Prox
 	}
 
 	proxy.reportRates = make(map[string]*ReportedRate,0)
+	proxy.subMiner = make(map[string]*MinerSubInfo,0)
 
 	proxy.fetchBlockTemplate()
 
@@ -177,6 +180,11 @@ func (s *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ip := s.remoteAddr(r)
+	if !s.policy.CheckInboundIP(ip) {
+		log.Printf("Invalid Ip : %s", ip)
+		s.writeError(w, 404, "rpc: authenticationError, received "+r.Method)
+		return
+	}
 	if !s.policy.IsBanned(ip) {
 		s.handleClient(w, r, ip)
 	}
@@ -278,7 +286,7 @@ func (cs *Session) handleMessage(s *ProxyServer, r *http.Request, req *JSONRpcRe
 			log.Println("Malformed stratum request params from", cs.ip)
 			return
 		}
-		s.handleSubmitHashRateRPC(cs, cs.login, params[0])
+		s.handleSubmitHashRateRPC(cs, cs.login, params[0], "")
 		cs.sendResult(req.Id, true)
 	default:
 		errReply := s.handleUnknownRPC(cs, req.Method)

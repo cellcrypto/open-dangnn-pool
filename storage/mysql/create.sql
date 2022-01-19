@@ -163,3 +163,40 @@ CREATE TABLE `log` (
 COLLATE='utf8mb3_general_ci'
 ENGINE=InnoDB
 AUTO_INCREMENT=1;
+
+
+CREATE TABLE `miner_sub` (
+    `login_addr` VARCHAR(68) NOT NULL DEFAULT '' COLLATE 'utf8mb3_general_ci',
+    `sub_addr` VARCHAR(68) NOT NULL DEFAULT '' COLLATE 'utf8mb3_general_ci',
+    `weight` INT(11) NULL DEFAULT NULL,
+    PRIMARY KEY (`login_addr`, `sub_addr`) USING BTREE
+)
+COLLATE='utf8mb3_general_ci'
+ENGINE=InnoDB;
+
+
+CREATE TABLE `inbound_id` (
+    `coin` VARCHAR(20) NULL DEFAULT NULL COLLATE 'utf8mb3_general_ci',
+    `id` VARCHAR(68) NULL DEFAULT NULL COLLATE 'utf8mb3_general_ci',
+    `rule` VARCHAR(20) NULL DEFAULT NULL COLLATE 'utf8mb3_general_ci',
+    `desc` VARBINARY(300) NULL DEFAULT NULL
+)
+COLLATE='utf8mb3_general_ci'
+ENGINE=InnoDB;
+
+
+CREATE TABLE `inbound_ip` (
+    `coin` VARCHAR(20) NULL DEFAULT NULL COLLATE 'utf8mb3_general_ci',
+    `ip` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb3_general_ci',
+    `rule` VARCHAR(20) NULL DEFAULT NULL COLLATE 'utf8mb3_general_ci',
+    `desc` VARBINARY(300) NULL DEFAULT NULL
+)
+COLLATE='utf8mb3_general_ci'
+ENGINE=InnoDB;
+
+CREATE TABLE `ban_whitelist` (
+    `coin` VARCHAR(20) NULL DEFAULT NULL COLLATE 'utf8mb3_general_ci',
+    `ip_addr` VARCHAR(50) NULL DEFAULT NULL COLLATE 'utf8mb3_general_ci'
+)
+COLLATE='utf8mb3_general_ci'
+ENGINE=InnoDB;

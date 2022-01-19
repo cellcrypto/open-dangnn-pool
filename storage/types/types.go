@@ -52,6 +52,16 @@ type CreditsImmatrue struct {
 	Amount int64
 }
 
+type InboundIpList struct {
+	Ip      string
+	Allowed bool // true: allow false: deny
+}
+
+type InboundIdList struct {
+	Id      string
+	Allowed bool // true: allow false: deny
+}
+
 var (
 	GenesisReword =   math.MustParseBig256("3000000000000000000")	// 300DGC = 3ETH
 	DiffByShareValue = int64(2000000000)

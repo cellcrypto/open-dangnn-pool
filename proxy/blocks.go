@@ -40,6 +40,14 @@ type Block struct {
 	number      uint64
 }
 
+type MinerSubInfo struct {
+	login string
+	choice int
+	timeout int64
+	subLogins []string
+	subLoginMap map[string]int
+}
+
 func (b Block) Difficulty() *big.Int     { return b.difficulty }
 func (b Block) HashNoNonce() common.Hash { return b.hashNoNonce }
 func (b Block) Nonce() uint64            { return b.nonce }

@@ -7,6 +7,7 @@ import (
 	"github.com/cellcrypto/open-dangnn-pool/storage/types"
 	"github.com/cellcrypto/open-dangnn-pool/util"
 	"github.com/cellcrypto/open-dangnn-pool/util/plogger"
+	mapset "github.com/deckarep/golang-set"
 	"github.com/ethereum/go-ethereum/common/math"
 	_ "github.com/go-sql-driver/mysql"
 	"log"
@@ -1480,5 +1481,214 @@ func (d *Database) GetPoolBalanceByOnce(maxHeight, minHeight int64, coin string)
 	}
 
 	return big.NewInt(0), 0, nil
+}
 
+func (d *Database) IsMinerExists(login string) (bool,error) {
+	conn := d.Conn
+
+	rows, err := conn.Query("SELECT login_addr FROM miner_info WHERE login_addr=?", login)
+	if err != nil {
+		return true, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		return true, nil
+	}
+	return false, nil
+}
+
+func (d *Database) ChoiceSubMiner(login string) ([]string, map[string]int){
+	conn := d.Conn
+	var result []string
+	var resultMap map[string]int
+	rows, err := conn.Query("SELECT sub_addr,weight FROM miner_sub WHERE login_addr=?", login)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			subAddr string
+			weight  int
+		)
+
+		err := rows.Scan(&subAddr, &weight)
+		if err != nil {
+			log.Printf("mysql ChoiceSubMiner:rows.Scan() error: %v", err)
+			return nil, nil
+		}
+
+		if weight <= 0 { weight = 1 }
+
+		for i:= 0;i<weight;i++ {
+			result = append(result, subAddr)
+		}
+
+		if resultMap == nil {
+			resultMap = make(map[string]int)
+		}
+
+		if addrCnt, ok := resultMap[subAddr]; ok {
+			resultMap[subAddr] = addrCnt + weight
+		} else {
+			resultMap[subAddr] = weight
+		}
+	}
+
+	return result, resultMap
+}
+
+func (d *Database) ChoiceSubMiner2(login string) (map[string]int64,int64){
+	conn := d.Conn
+
+	var (
+		resultMap map[string]int64
+		weightCount int64
+	)
+
+	rows, err := conn.Query("SELECT sub_addr,weight FROM miner_sub WHERE login_addr=?", login)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			subAddr string
+			weight  int64
+		)
+
+		err := rows.Scan(&subAddr, &weight)
+		if err != nil {
+			log.Printf("mysql ChoiceSubMiner:rows.Scan() error: %v", err)
+			return nil, 0
+		}
+
+		if weight <= 0 { weight = 1 }
+
+		if resultMap == nil {
+			resultMap = make(map[string]int64)
+		}
+
+		weightCount += weight
+
+		if addrCnt, ok := resultMap[subAddr]; ok {
+			resultMap[subAddr] = addrCnt + weight
+		} else {
+			resultMap[subAddr] = weight
+		}
+	}
+
+	return resultMap, weightCount
+}
+
+func (d *Database) GetIpInboundList() ([]*types.InboundIpList, error) {
+	conn := d.Conn
+	rows, err := conn.Query("SELECT ip,rule FROM inbound_ip WHERE coin=?",d.Config.Coin)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	result := make([]*types.InboundIpList,0)
+
+	for rows.Next() {
+		var (
+			ip,rule string
+
+		)
+		err := rows.Scan(&ip, &rule)
+		if err != nil {
+			log.Printf("mysql GetIpInboundList:rows.Scan() error: %v", err)
+			return nil, err
+		}
+		allowed := false
+		if rule == "allow" {
+			allowed = true
+		}
+		result = append(result, &types.InboundIpList{
+			Ip:      ip,
+			Allowed: allowed,
+		})
+	}
+
+	return result, nil
+}
+
+func (d *Database) GetIdInboundList() ([]*types.InboundIdList, error) {
+	conn := d.Conn
+
+	rows, err := conn.Query("SELECT id,rule FROM inbound_id WHERE coin=?",d.Config.Coin)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	result := make([]*types.InboundIdList,0)
+
+	for rows.Next() {
+		var (
+			id,rule string
+		)
+		err := rows.Scan(&id, &rule)
+		if err != nil {
+			log.Printf("mysql GetIdInboundList:rows.Scan() error: %v", err)
+			return nil, err
+		}
+		allowed := false
+		if rule == "allow" {
+			allowed = true
+		}
+		result = append(result, &types.InboundIdList{
+			Id:      id,
+			Allowed: allowed,
+		})
+	}
+
+	return result, nil
+}
+
+func (d *Database) GetBanWhitelist() (mapset.Set, error) {
+	conn := d.Conn
+
+	rows, err := conn.Query("SELECT ip_addr FROM ban_whitelist WHERE coin=?",d.Config.Coin)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	result := mapset.NewSet()
+
+	for rows.Next() {
+		var (
+			ip string
+		)
+		err := rows.Scan(&ip)
+		if err != nil {
+			log.Printf("mysql GetBanWhitelist:rows.Scan() error: %v", err)
+			return nil, err
+		}
+
+		result.Add(ip)
+	}
+
+	return result, nil
+}
+
+
+func (d *Database) UpdatePayoutLimit(login string,dgcValue string) bool {
+	conn := d.Conn
+	//The location (d.Config.Coin) does not need to be set.
+	ret,err := conn.Exec("UPDATE miner_info SET payout_limit=? WHERE login_addr=?", dgcValue, login)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if ok,_ := ret.RowsAffected(); ok <= 0  {
+		return false
+	}
+
+	return true
 }

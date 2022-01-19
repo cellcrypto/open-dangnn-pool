@@ -47,6 +47,15 @@ func (self PayoutsConfig) GasPriceHex() string {
 	return hexutil.EncodeBig(x)
 }
 
+func (self PayoutsConfig) GasFeeInShannon() int64 {
+	price := util.String2Big(self.GasPrice)
+	gas := util.String2Big(self.Gas)
+	gasfee := gas.Mul(gas,price)
+	gasfee = gasfee.Div(gasfee,util.Shannon)
+	return gasfee.Int64()
+}
+
+
 type TxReceipt struct {
 	txHash string
 	login string
@@ -231,7 +240,19 @@ func (u *PayoutsProcessor) process() {
 			break
 		}
 
-		log.Printf("Locked payment for %s, %v Shannon", login, amount)
+		// excluding gas fee
+		gasFee := u.config.GasFeeInShannon()
+		totalamount := amount
+		amount -= gasFee
+		amountInShannon = big.NewInt(amount)
+
+		if amount <= 0 {
+			return
+		}
+
+		// Shannon^2 = Wei
+		amountInWei = new(big.Int).Mul(amountInShannon, util.Shannon)
+		log.Printf("Locked payment for %s, %v Shannon gas fee: %v Shannon", login, totalamount,gasFee)
 		// Lock payments for current payout
 		// Debit miner's balance and update stats
 		ret, err := u.db.UpdateBalance(login, amount, coin)

@@ -9,6 +9,8 @@
           <th>ID</th>
           <th>Hashrate (rough, short average)</th>
           <th>Hashrate (accurate, long average)</th>
+          <th>Reported HashRate</th>
+          <th>Device Number</th>
           <th>Last Share</th>
         </tr>
       </thead>
@@ -18,6 +20,8 @@
             <td>{{k}}</td>
             <td>{{format-hashrate v.hr}}</td>
             <td>{{format-hashrate v.hr2}}</td>
+            <td>{{format-hashrate v.reported}}</td>
+            <td>{{format-number v.size}}</td>
             <td>{{format-relative (seconds-to-ms v.lastBeat)}}</td>
           </tr>
         {{/each-in}}

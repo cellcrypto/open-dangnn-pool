@@ -2,6 +2,7 @@ package policy
 
 import (
 	"fmt"
+	"github.com/cellcrypto/open-dangnn-pool/storage/mysql"
 	"github.com/cellcrypto/open-dangnn-pool/storage/redis"
 	"log"
 	"os/exec"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cellcrypto/open-dangnn-pool/util"
+	mapset "github.com/deckarep/golang-set"
 )
 
 type Config struct {
@@ -48,6 +50,8 @@ type Stats struct {
 	Malformed     int32
 	ConnLimit     int32
 	Banned        int32
+	Logined		 bool
+
 }
 
 type PolicyServer struct {
@@ -59,18 +63,24 @@ type PolicyServer struct {
 	startedAt  int64
 	grace      int64
 	timeout    int64
-	blacklist  []string
-	whitelist  []string
-	storage    *redis.RedisClient
+	whitelist []string
+	inboundIp mapset.Set
+	allowAllIp bool
+	inboundId mapset.Set
+	whitelist2  mapset.Set
+	allowAllId bool
+	storage   *redis.RedisClient
+	db 		   *mysql.Database
 }
 
-func Start(cfg *Config, storage *redis.RedisClient) *PolicyServer {
+func Start(cfg *Config, storage *redis.RedisClient, db *mysql.Database) *PolicyServer {
 	s := &PolicyServer{config: cfg, startedAt: util.MakeTimestamp()}
 	grace := util.MustParseDuration(cfg.Limits.Grace)
 	s.grace = int64(grace / time.Millisecond)
 	s.banChannel = make(chan string, 64)
 	s.stats = make(map[string]*Stats)
 	s.storage = storage
+	s.db = db
 	s.refreshState()
 
 	timeout := util.MustParseDuration(s.config.ResetInterval)
@@ -147,13 +157,68 @@ func (s *PolicyServer) refreshState() {
 	defer s.Unlock()
 	var err error
 
-	s.blacklist, err = s.storage.GetBlacklist()
+	// s.blacklist, err = s.storage.GetBlacklist()
+	inboundIp, err := s.db.GetIpInboundList()
 	if err != nil {
 		log.Printf("Failed to get blacklist from backend: %v", err)
+		s.inboundIp = nil
+	} else {
+		for _, origin := range inboundIp {
+			if origin.Ip == "*" {
+				if origin.Allowed == true {
+					s.allowAllIp = true
+				}
+			}
+		}
+		s.inboundIp = mapset.NewSet()
+		for _, origin := range inboundIp {
+			if s.allowAllIp == true {
+				// black list
+				if origin.Allowed == false {
+					s.inboundIp.Add(origin.Ip)
+				}
+			} else {
+				// white list
+				if origin.Allowed == true {
+					s.inboundIp.Add(origin.Ip)
+				}
+			}
+		}
 	}
-	s.whitelist, err = s.storage.GetWhitelist()
+
+	inboundId, err := s.db.GetIdInboundList()
+	if err != nil {
+		log.Printf("Failed to get blacklist from backend: %v", err)
+		s.inboundId = nil
+	} else {
+		for _, origin := range inboundId {
+			if origin.Id == "*" {
+				if origin.Allowed == true {
+					s.allowAllId = true
+				}
+			}
+		}
+		s.inboundId = mapset.NewSet()
+		for _, origin := range inboundId {
+			if s.allowAllId == true {
+				// black list
+				if origin.Allowed == false {
+					s.inboundId.Add(origin.Id)
+				}
+			} else {
+				// white list
+				if origin.Allowed == true {
+					s.inboundId.Add(origin.Id)
+				}
+			}
+		}
+	}
+
+	// s.whitelist, err = s.storage.GetWhitelist()
+	s.whitelist2, err = s.db.GetBanWhitelist()
 	if err != nil {
 		log.Printf("Failed to get whitelist from backend: %v", err)
+		s.whitelist2 = nil
 	}
 	log.Println("Policy state refresh complete")
 }
@@ -202,9 +267,13 @@ func (s *PolicyServer) ApplyLimitPolicy(ip string) bool {
 }
 
 func (s *PolicyServer) ApplyLoginPolicy(addy, ip string) bool {
-	if s.InBlackList(addy) {
+	if s.inboundId == nil {
+		// If you do not get blacklist information, you cannot log in.
+		return false
+	} else if s.InIdBlackList(addy) {
 		x := s.Get(ip)
 		s.forceBan(x, ip)
+		log.Printf("Invalid addr : %v", addy)
 		return false
 	}
 	return true
@@ -258,7 +327,7 @@ func (x *Stats) resetShares() {
 }
 
 func (s *PolicyServer) forceBan(x *Stats, ip string) {
-	if !s.config.Banning.Enabled || s.InWhiteList(ip) {
+	if !s.config.Banning.Enabled || s.InForceBanWhiteList(ip) {
 		return
 	}
 	atomic.StoreInt64(&x.BannedAt, util.MakeTimestamp())
@@ -284,16 +353,43 @@ func (x *Stats) decrLimit() int32 {
 	return atomic.AddInt32(&x.ConnLimit, -1)
 }
 
-func (s *PolicyServer) InBlackList(addy string) bool {
-	s.RLock()
-	defer s.RUnlock()
-	return util.StringInSlice(addy, s.blacklist)
+func (s *PolicyServer) CheckInboundIP(ip string) bool {
+	if s.allowAllIp == true {
+		// black list
+		if s.inboundIp.Contains(ip) {
+			return true
+		}
+		return false
+	} else {
+		// white list
+		if s.inboundIp.Contains(ip) {
+			return false
+		}
+		return true
+	}
 }
 
-func (s *PolicyServer) InWhiteList(ip string) bool {
-	s.RLock()
-	defer s.RUnlock()
-	return util.StringInSlice(ip, s.whitelist)
+func (s *PolicyServer) InIdBlackList(addy string) bool {
+	if s.allowAllId == true {
+		// black list
+		if s.inboundId.Contains(addy) {
+			return true
+		}
+		return false
+	} else {
+		// white list
+		if s.inboundId.Contains(addy) {
+			return false
+		}
+		return true
+	}
+	//s.RLock()
+	//defer s.RUnlock()
+	//return util.StringInSlice(addy, s.blacklist)
+}
+
+func (s *PolicyServer) InForceBanWhiteList(ip string) bool {
+	return s.whitelist2.Contains(ip)
 }
 
 func (s *PolicyServer) doBan(ip string) {
@@ -310,6 +406,8 @@ func (s *PolicyServer) doBan(ip string) {
 		log.Printf("CMD Error: %s", err)
 	}
 }
+
+
 
 func (x *Stats) heartbeat() {
 	now := util.MakeTimestamp()

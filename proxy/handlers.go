@@ -109,29 +109,28 @@ func (s *ProxyServer) handleUnknownRPC(cs *Session, m string) *ErrorReply {
 	return &ErrorReply{Code: -3, Message: "Method not found"}
 }
 
-func (s *ProxyServer) handleSubmitHashRateRPC(cs *Session, login string, rate string) *ErrorReply {
-	ret, ok := s.reportRates[login]
+func (s *ProxyServer) handleSubmitHashRateRPC(cs *Session, login string, rate string, WorkerId string) *ErrorReply {
+	ret := s.reportRates[login]
 	ts := util.MakeTimestamp() / 1000
-	if !ok {
-		// Check if there is information in Redis
-		rate, insertTime, _ := s.backend.GetReportedtHashrate(login)
-		if rate > 0 {
-			if insertTime + 600 > ts {
-				s.reportRates[login] = &ReportedRate{
-					rate:       rate,
-					insertTime: insertTime,
-				}
-				return &ErrorReply{Code: -3, Message: "Method not found"}
-			}
-		}
-	} else {
-		if ret.insertTime + 600 > ts {
-			return &ErrorReply{Code: -3, Message: "Method not found"}
-		}
+
+	if ret != nil && ret.insertTime + 600 > ts {
+		return &ErrorReply{Code: -3, Message: "Method not found"}
 	}
 
 	reported, _ := strconv.ParseInt(strings.Replace(rate, "0x", "", -1), 16, 64)
-	s.backend.SetReportedtHashrate(login, reported, ts)
+	subLogins, count := s.db.ChoiceSubMiner2(login)
+
+	mapLogins := make(map[string]string)
+	if subLogins == nil {
+		mapLogins[login] = util.Join(reported, ts, 1)
+	} else {
+		for login, weight := range subLogins {
+			mapLogins[login] = util.Join(reported/count, ts, weight)
+		}
+	}
+
+
+	s.backend.SetReportedtHashrates(mapLogins, WorkerId)
 
 	s.reportRates[login] = &ReportedRate{
 		rate:       reported,

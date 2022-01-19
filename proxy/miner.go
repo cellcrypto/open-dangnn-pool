@@ -1,17 +1,17 @@
 package proxy
 
 import (
+	"github.com/cellcrypto/open-dangnn-pool/util"
+	"github.com/ethereum/ethash"
+	"github.com/ethereum/go-ethereum/common"
 	"log"
 	"math/big"
 	"strconv"
 	"strings"
-
-	"github.com/cellcrypto/open-dangnn-pool/util"
-	"github.com/ethereum/ethash"
-	"github.com/ethereum/go-ethereum/common"
 )
 
 var hasher = ethash.New()
+var subMiner map[string]*MinerSubInfo
 
 func (s *ProxyServer) processShare(login, id, ip string, t *BlockTemplate, params []string) (bool, bool) {
 	nonceHex := params[0]
@@ -47,6 +47,11 @@ func (s *ProxyServer) processShare(login, id, ip string, t *BlockTemplate, param
 		return false, false
 	}
 
+	subLogin := login
+	subLogin , count := s.ChoiceSubLogin(login, ok, subLogin)
+
+	println("subLogin" ,subLogin, "count",count)
+
 	if hasher.Verify(block) {
 		ok, err := s.rpc().SubmitBlock(params)
 		if err != nil {
@@ -67,10 +72,10 @@ func (s *ProxyServer) processShare(login, id, ip string, t *BlockTemplate, param
 				return true, false
 			}
 
-			s.db.WriteBlock(login, id, params, shareDiff, h.diff.Int64(), h.height, s.hashrateExpiration, stratumHostname)
+			s.db.WriteBlock(subLogin, id, params, shareDiff, h.diff.Int64(), h.height, s.hashrateExpiration, stratumHostname)
 
 			//log.Printf("[test code] Block rejected at height %v for %v", h.height, t.Header , params[0])
-			exist, err = s.backend.WriteBlock(login, id, params, shareDiff, h.diff.Int64(), h.height, s.hashrateExpiration, stratumHostname)
+			exist, err = s.backend.WriteBlock(subLogin, id, params, shareDiff, h.diff.Int64(), h.height, s.hashrateExpiration, stratumHostname, count)
 			if exist {
 				return true, false
 			}
@@ -92,12 +97,12 @@ func (s *ProxyServer) processShare(login, id, ip string, t *BlockTemplate, param
 			return true, false
 		}
 
-		err = s.db.WriteShare(login, id, params, shareDiff, h.height, s.hashrateExpiration, stratumHostname)
+		err = s.db.WriteShare(subLogin, id, params, shareDiff, h.height, s.hashrateExpiration, stratumHostname)
 		if err != nil {
 			return true, false
 		}
 
-		exist, err = s.backend.WriteShare(login, id, params, shareDiff, h.height, s.hashrateExpiration, stratumHostname)
+		exist, err = s.backend.WriteShare(subLogin, id, params, shareDiff, h.height, s.hashrateExpiration, stratumHostname, count)
 		if exist {
 			return true, false
 		}
@@ -108,21 +113,38 @@ func (s *ProxyServer) processShare(login, id, ip string, t *BlockTemplate, param
 	return false, true
 }
 
+func (s *ProxyServer) ChoiceSubLogin(login string, ok bool, subLogin string) (string,int) {
 
-func (s *ProxyServer) GetReportedHashRate(login string) int64{
-	ret, ok := s.reportRates[login]
-	ts := util.MakeTimestamp() / 1000
-	if ok {
-		if ret.insertTime + 600 > ts {
-			return ret.rate
+	var resultCount = 1
+
+	minerSubInfo, ok := s.subMiner[login]
+	if !ok || minerSubInfo.timeout < util.MakeTimestamp() {
+		// separation work
+		subLogins, subLoginMap := s.db.ChoiceSubMiner(login)
+		if minerSubInfo == nil {
+			minerSubInfo = &MinerSubInfo{
+				login:     login,
+				choice:    0,
+				timeout:   util.MakeTimestamp() + 60*10*1000,
+				subLogins: subLogins,
+				subLoginMap: subLoginMap,
+			}
+		} else {
+			minerSubInfo.subLogins = subLogins
+			minerSubInfo.subLoginMap = subLoginMap
+			minerSubInfo.timeout = util.MakeTimestamp() + 60*10*1000
 		}
+
+		s.subMiner[login] = minerSubInfo
 	}
 
-	rate, insertTime, _ := s.backend.GetReportedtHashrate(login)
-	if rate > 0 {
-		if insertTime+600 > ts {
-			return rate
+	if minerSubInfo.subLogins != nil {
+		if len(minerSubInfo.subLogins) <= minerSubInfo.choice {
+			minerSubInfo.choice = 0
 		}
+		subLogin = minerSubInfo.subLogins[minerSubInfo.choice]
+		resultCount = minerSubInfo.subLoginMap[subLogin]
+		minerSubInfo.choice++
 	}
-	return 0
+	return subLogin, resultCount
 }

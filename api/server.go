@@ -146,11 +146,8 @@ func (s *ApiServer) Start() {
 				for _, miner := range miners {
 
 					if ok := s.db.CheckTimeMinerCharts(miner, ts, minerChartIntvSec); ok {
-						reportedHash, reportTime, _ := s.backend.GetReportedtHashrate(miner.Addr)
+						reportedHash, _ := s.backend.GetAllReportedtHashrate(miner.Addr)
 
-						if reportedHash < 0 || reportTime + 1200 < ts{
-							reportedHash = 0
-						}
 						online, _, totalHashrate , currentHashrate := s.backend.CollectWorkersStatsEx(s.hashrateWindow, s.hashrateLargeWindow, miner.Addr)
 						// stats, _ := s.backend.CollectWorkersStats(s.hashrateWindow, s.hashrateLargeWindow, miner.Addr)
 						s.collectMinerCharts(miner.Addr, currentHashrate, totalHashrate, online, int64(miner.Share), reportedHash)
@@ -181,6 +178,7 @@ func (s *ApiServer) listen() {
 	r.HandleFunc("/api/blocks", s.BlocksIndex)
 	r.HandleFunc("/api/payments", s.PaymentsIndex)
 	r.HandleFunc("/api/accounts/{login:0x[0-9a-fA-F]{40}}", s.AccountIndex)
+	r.HandleFunc("/user/payout/{login:0x[0-9a-fA-F]{40}}/{value:[0-9]+}", s.PayoutLimitIndex)
 	//r.HandleFunc("/api/accounts/{login:0x[0-9a-fA-F]{40}}/{personal:0x[0-9a-fA-F]{40}}", s.AccountIndexEx)
 	r.NotFoundHandler = http.HandlerFunc(notFound)
 	r.Use(authenticationMiddleware )
@@ -373,16 +371,17 @@ func (s *ApiServer) AccountIndex(w http.ResponseWriter, r *http.Request) {
 	cacheIntv := int64(s.statsIntv / time.Millisecond)
 	// Refresh stats if stale
 	if !ok || reply.updatedAt < now-cacheIntv {
-		exist, err := s.backend.IsMinerExists(login)
-		if !exist {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
+		exist, err := s.db.IsMinerExists(login)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			log.Printf("Failed to fetch stats from backend: %v", err)
 			return
 		}
+		if !exist {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
 
 		stats, err := s.backend.GetMinerStats(login, s.config.Payments)
 		if err != nil {
@@ -390,12 +389,14 @@ func (s *ApiServer) AccountIndex(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Failed to fetch stats from backend: %v", err)
 			return
 		}
-		workers, err := s.backend.CollectWorkersStats(s.hashrateWindow, s.hashrateLargeWindow, login)
+		reportedHash, _ := s.backend.GetReportedtHashrate(login)
+		workers, err := s.backend.CollectWorkersStats(s.hashrateWindow, s.hashrateLargeWindow, login, reportedHash)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			log.Printf("Failed to fetch stats from backend: %v", err)
 			return
 		}
+
 		for key, value := range workers {
 			stats[key] = value
 		}
@@ -422,6 +423,29 @@ func (s *ApiServer) AccountIndex(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+
+func (s *ApiServer) PayoutLimitIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	login := strings.ToLower(mux.Vars(r)["login"])
+	value := strings.ToLower(mux.Vars(r)["value"])
+
+	if !s.db.UpdatePayoutLimit(login, value) {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Printf("Failed to UpdatePayoutLimit()")
+		return
+	}
+
+	reply := make(map[string]interface{})
+	reply["stats"] = "ok"
+	w.WriteHeader(http.StatusOK)
+	err := json.NewEncoder(w).Encode(reply)
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
 //
 //func (s *ApiServer) AccountIndexEx(w http.ResponseWriter, r *http.Request) {
 //	w.Header().Set("Content-Type", "application/json; charset=UTF-8")

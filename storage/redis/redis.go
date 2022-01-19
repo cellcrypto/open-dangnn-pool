@@ -3,7 +3,6 @@ package redis
 import (
 	"fmt"
 	"github.com/cellcrypto/open-dangnn-pool/storage/types"
-
 	"math"
 	"math/big"
 	"strconv"
@@ -61,6 +60,8 @@ type Worker struct {
 	TotalHR int64 `json:"hr2"`
 	WorkerDiff     int64  `json:"difficulty"`
 	WorkerHostname string `json:"hostname"`
+	Size  			int64 `json:"size"`
+	Reported		int64 `json:"reported"`
 }
 
 type IMysqlDB interface {
@@ -298,7 +299,7 @@ func (r *RedisClient) CheckPoWExist(height uint64, params []string) (bool, error
 	return val == 0, err
 }
 
-func (r *RedisClient) WriteShare(login, id string, params []string, diff int64, height uint64, window time.Duration, hostname string) (bool, error) {
+func (r *RedisClient) WriteShare(login, id string, params []string, diff int64, height uint64, window time.Duration, hostname string, loginCnt int) (bool, error) {
 	tx := r.client.Multi()
 	defer tx.Close()
 
@@ -306,14 +307,14 @@ func (r *RedisClient) WriteShare(login, id string, params []string, diff int64, 
 	ts := ms / 1000
 
 	_, err := tx.Exec(func() error {
-		r.writeShare(tx, ms, ts, login, id, diff, window, hostname)
+		r.writeShare(tx, ms, ts, login, id, diff, window, hostname, loginCnt)
 		tx.HIncrBy(r.formatKey("stats"), "roundShares", diff)
 		return nil
 	})
 	return false, err
 }
 
-func (r *RedisClient) WriteBlock(login, id string, params []string, diff, roundDiff int64, height uint64, window time.Duration, hostname string) (bool, error) {
+func (r *RedisClient) WriteBlock(login, id string, params []string, diff, roundDiff int64, height uint64, window time.Duration, hostname string, loginCnt int) (bool, error) {
 	tx := r.client.Multi()
 	defer tx.Close()
 
@@ -322,7 +323,7 @@ func (r *RedisClient) WriteBlock(login, id string, params []string, diff, roundD
 	ts := ms / 1000
 
 	cmds, err := tx.Exec(func() error {
-		r.writeShare(tx, ms, ts, login, id, diff, window, hostname)
+		r.writeShare(tx, ms, ts, login, id, diff, window, hostname, loginCnt)
 		tx.HSet(r.formatKey("stats"), "lastBlockFound", strconv.FormatInt(ts, 10))
 		tx.HDel(r.formatKey("stats"), "roundShares")
 		tx.ZIncrBy(r.formatKey("finders"), 1, login)
@@ -369,7 +370,7 @@ func (r *RedisClient) WriteBlock(login, id string, params []string, diff, roundD
 	}
 }
 
-func (r *RedisClient) writeShare(tx *redis.Multi, ms, ts int64, login, id string, diff int64, expire time.Duration, hostname string) {
+func (r *RedisClient) writeShare(tx *redis.Multi, ms, ts int64, login, id string, diff int64, expire time.Duration, hostname string, loginCnt int) {
 	times := int(diff / r.DiffByShareValue)
 
 	// Moved get hostname to stratums
@@ -383,7 +384,7 @@ func (r *RedisClient) writeShare(tx *redis.Multi, ms, ts int64, login, id string
 	// For aggregation of hashrate, to store value in hashrate key
 	tx.ZAdd(r.formatKey("hashrate"), redis.Z{Score: float64(ts), Member: util.Join(diff, login, id, ms, diff, hostname)})
 	// For separate miner's workers hashrate, to store under hashrate table under login key
-	tx.ZAdd(r.formatKey("hashrate", login), redis.Z{Score: float64(ts), Member: util.Join(diff, id, ms, diff, hostname)})
+	tx.ZAdd(r.formatKey("hashrate", login), redis.Z{Score: float64(ts), Member: util.Join(diff, id, loginCnt, ms, diff, hostname)})
 	// Will delete hashrates for miners that gone
 	tx.Expire(r.formatKey("hashrate", login), expire)
 	//tx.HSet(r.formatKey("miners", login), "lastShare", strconv.FormatInt(ts, 10))
@@ -904,7 +905,7 @@ func (r *RedisClient) CollectStats(smallWindow time.Duration, maxBlocks, maxPaym
 	return stats, nil
 }
 
-func (r *RedisClient) CollectWorkersStats(sWindow, lWindow time.Duration, login string) (map[string]interface{}, error) {
+func (r *RedisClient) CollectWorkersStats(sWindow, lWindow time.Duration, login string, mapReportRate map[string]int64) (map[string]interface{}, error) {
 	smallWindow := int64(sWindow / time.Second)
 	largeWindow := int64(lWindow / time.Second)
 	stats := make(map[string]interface{})
@@ -930,7 +931,7 @@ func (r *RedisClient) CollectWorkersStats(sWindow, lWindow time.Duration, login 
 	currentHashrate := int64(0)
 	online := int64(0)
 	offline := int64(0)
-	workers := convertWorkersStats(smallWindow, cmds[1].(*redis.ZSliceCmd))
+	workers := convertWorkersStats(smallWindow, cmds[1].(*redis.ZSliceCmd), true)
 
 	for id, worker := range workers {
 		timeOnline := now - worker.startedAt
@@ -959,6 +960,11 @@ func (r *RedisClient) CollectWorkersStats(sWindow, lWindow time.Duration, login 
 
 		currentHashrate += worker.HR
 		totalHashrate += worker.TotalHR
+		if mapReportRate != nil {
+			if reported , ok := mapReportRate[id]; ok {
+				worker.Reported = reported
+			}
+		}
 		workers[id] = worker
 	}
 	stats["workers"] = workers
@@ -1018,7 +1024,7 @@ func (r *RedisClient) CollectWorkersStatsEx(sWindow, lWindow time.Duration, logi
 	currentHashrate := int64(0)
 	online := int64(0)
 	offline := int64(0)
-	workers := convertWorkersStats(smallWindow, cmds[1].(*redis.ZSliceCmd))
+	workers := convertWorkersStats(smallWindow, cmds[1].(*redis.ZSliceCmd), false)
 
 	for id, worker := range workers {
 		timeOnline := now - worker.startedAt
@@ -1183,17 +1189,18 @@ func convertBlockResults(rows ...*redis.ZSliceCmd) []*types.BlockData {
 
 // Build per login workers's total shares map {'rig-1': 12345, 'rig-2': 6789, ...}
 // TS => diff, id, ms
-func convertWorkersStats(window int64, raw *redis.ZSliceCmd) map[string]Worker {
+func convertWorkersStats(window int64, raw *redis.ZSliceCmd, divFlag bool) map[string]Worker {
 	now := util.MakeTimestamp() / 1000
 	workers := make(map[string]Worker)
 
 	for _, v := range raw.Val() {
+		// diff, id, loginCnt, ms, diff, hostname
 		parts := strings.Split(v.Member.(string), ":")
 		share, _ := strconv.ParseInt(parts[0], 10, 64)
 
 		var hostname string
 		if len(parts) > 3 {
-			hostname = parts[4]
+			hostname = parts[5]
 		} else {
 			hostname = "unknown"
 		}
@@ -1202,17 +1209,29 @@ func convertWorkersStats(window int64, raw *redis.ZSliceCmd) map[string]Worker {
 		score := int64(v.Score)
 		worker := workers[id]
 
+		worker.Size, _ = strconv.ParseInt(parts[2], 10, 64)
+		if worker.Size < 1 { worker.Size=1 }
 		// Add for large window
-		worker.TotalHR += share
+		if divFlag == true  {
+			worker.TotalHR += share / worker.Size
+			worker.WorkerDiff = share / worker.Size
+		} else {
+			worker.TotalHR += share
+			// Addition from Mohannad Otaibi to report Difficulty
+			worker.WorkerDiff = share
+		}
 
-		// Addition from Mohannad Otaibi to report Difficulty
-		worker.WorkerDiff = share
 		worker.WorkerHostname = hostname
+
 		// End Mohannad Adjustments
 
 		// Add for small window if matches
 		if score >= now-window {
-			worker.HR += share
+			if divFlag == true  {
+				worker.HR += share / worker.Size
+			} else {
+				worker.HR += share
+			}
 		}
 
 		if worker.LastBeat < score {
@@ -1221,6 +1240,8 @@ func convertWorkersStats(window int64, raw *redis.ZSliceCmd) map[string]Worker {
 		if worker.startedAt > score || worker.startedAt == 0 {
 			worker.startedAt = score
 		}
+
+
 		workers[id] = worker
 	}
 	return workers
@@ -1343,22 +1364,69 @@ func (r *RedisClient) SetDB(db IMysqlDB) {
 	r.mysql = db
 }
 
-func (r *RedisClient) GetReportedtHashrate(login string) (int64, int64, error) {
-	reportedRate := r.client.HGet(r.formatKey("miners", login), "reportrate")
+func (r *RedisClient) GetReportedtHashrate(login string) (map[string]int64, error) {
+	var result map[string]int64
+	reportedRate := r.client.HGetAllMap(r.formatKey("report", login))
 	if reportedRate.Err() == redis.Nil {
-		return -1, -1, nil
+		return nil, nil
 	} else if reportedRate.Err() != nil {
-		return 0, 0, reportedRate.Err()
+		return nil, reportedRate.Err()
 	}
 
-	val := strings.Split(reportedRate.Val(),":")
-	rate, _ := strconv.ParseInt(val[0], 10, 64)
-	ts, _ := strconv.ParseInt(val[1], 10, 64)
+	now := util.MakeTimestamp() / 1000
+	reportedMap, _ := reportedRate.Result()
+	for workerId, rateStr := range reportedMap {
+		val := strings.Split(rateStr,":")
+		rate, _ := strconv.ParseInt(val[0], 10, 64)
+		ts, _ := strconv.ParseInt(val[1], 10, 64)
 
-	return rate, ts, nil
+		if ts + 600 > now {
+			if result == nil { result = make(map[string]int64) }
+			result[workerId] = rate
+		}
+	}
+	return result, nil
 }
 
-func (r *RedisClient) SetReportedtHashrate(login string,rate int64, ts int64)  {
-	rateStr := util.Join(rate, ts)
-	r.client.HSet(r.formatKey("miners", login), "reportrate", rateStr)
+func (r *RedisClient) GetAllReportedtHashrate(login string) (int64, error) {
+	reportedRate := r.client.HGetAllMap(r.formatKey("report", login))
+	if reportedRate.Err() == redis.Nil {
+		return -1, nil
+	} else if reportedRate.Err() != nil {
+		return 0, reportedRate.Err()
+	}
+
+	var result int64
+	now := util.MakeTimestamp() / 1000
+
+	reportedMap, _ := reportedRate.Result()
+	for _, rateStr := range reportedMap {
+		val := strings.Split(rateStr,":")
+		rate, _ := strconv.ParseInt(val[0], 10, 64)
+		ts, _ := strconv.ParseInt(val[1], 10, 64)
+		size, _ := strconv.ParseInt(val[2], 10, 64)
+
+		if ts + 600 > now {
+			result += rate * size
+		}
+	}
+	return result, nil
 }
+
+func (r *RedisClient) SetReportedtHashrates(logins map[string]string, WorkerId string) error {
+	tx := r.client.Multi()
+	defer tx.Close()
+
+	_, err := tx.Exec(func() error {
+		for login, rateStr := range logins {
+			r.client.HSet(r.formatKey("report", login), WorkerId, rateStr)
+		}
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+	return nil
+}
+

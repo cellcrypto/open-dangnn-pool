@@ -101,6 +101,8 @@ func Join(args ...interface{}) string {
 		switch v.(type) {
 		case string:
 			s[i] = v.(string)
+		case int:
+			s[i] = strconv.Itoa( v.(int))
 		case int64:
 			s[i] = strconv.FormatInt(v.(int64), 10)
 		case uint64:

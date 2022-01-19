@@ -67,6 +67,12 @@ func (s *ProxyServer) handleTCPClient(cs *Session) error {
 	connbuff := bufio.NewReaderSize(cs.conn, MaxReqSize)
 	s.setDeadline(cs.conn)
 
+	if s.policy.CheckInboundIP(cs.ip) {
+		log.Printf("Invalid Ip : %s", cs.ip)
+		s.policy.BanClient(cs.ip)
+		return errors.New("invalid IP")
+	}
+
 	for {
 		data, isPrefix, err := connbuff.ReadLine()
 		if isPrefix {
@@ -140,7 +146,8 @@ func (cs *Session) handleTCPMessage(s *ProxyServer, req *StratumReq) error {
 			log.Println("Malformed stratum request params from", cs.ip)
 			return err
 		}
-		s.handleSubmitHashRateRPC(cs, cs.login, params[0])
+		Id := req.Worker
+		s.handleSubmitHashRateRPC(cs, cs.login, params[0], Id)
 
 		return cs.sendTCPResult(req.Id, true)
 	default:

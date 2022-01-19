@@ -3,6 +3,7 @@ module github.com/cellcrypto/open-dangnn-pool
 go 1.17
 
 require (
+	github.com/deckarep/golang-set v1.8.0
 	github.com/ethereum/ethash v0.0.0-20170407112842-f5f0a8b19625
 	github.com/ethereum/go-ethereum v1.6.1
 	github.com/go-sql-driver/mysql v1.6.0

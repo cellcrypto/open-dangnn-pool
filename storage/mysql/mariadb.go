@@ -131,9 +131,10 @@ func (d *Database) WriteBlock(login, id string, params []string, diff, roundDiff
 	}
 	defer tx.Rollback()
 	_, err = tx.Exec(
-		"INSERT INTO miner_info(`coin`,`login_addr`,`diff_times`,`blocks_found`,`hostname`,`share`,`last_share`) VALUES (?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE diff_times=diff_times+VALUE(diff_times),blocks_found=blocks_found+1,hostname=VALUE(hostname),share=share+VALUE(share),last_share=VALUE(last_share)",
+		"INSERT INTO miner_info(`coin`,`login_addr`,`diff_times`,`blocks_found`,`hostname`,`share`,`last_share`) VALUES (?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE diff_times=diff_times+VALUES(diff_times),blocks_found=blocks_found+1,hostname=VALUES(hostname),share=share+VALUES(share),last_share=VALUES(last_share)",
 		d.Config.Coin,login,diffTimes,1,hostname,diffTimes,nowTime)
 	if err != nil {
+		log.Println(d.Config.Coin,login,diffTimes,1,hostname,diffTimes,nowTime)
 		log.Fatal(err)
 	}
 
@@ -158,7 +159,7 @@ func (d *Database) WriteShare(login, id string, params []string, diff int64, hei
 	}
 	defer tx.Rollback()
 	_, err = tx.Exec(
-		"INSERT INTO miner_info(`coin`,`login_addr`,`diff_times`,`hostname`,`share`,`last_share`) VALUES (?,?,?,?,?,?)  ON DUPLICATE KEY UPDATE diff_times=diff_times+VALUE(diff_times),hostname=VALUE(hostname),share=share+VALUE(share),last_share=VALUE(last_share)",
+		"INSERT INTO miner_info(`coin`,`login_addr`,`diff_times`,`hostname`,`share`,`last_share`) VALUES (?,?,?,?,?,?)  ON DUPLICATE KEY UPDATE diff_times=diff_times+VALUES(diff_times),hostname=VALUES(hostname),share=share+VALUES(share),last_share=VALUES(last_share)",
 		d.Config.Coin,login,diffTimes,hostname,diffTimes,nowTime)
 	if err != nil {
 		log.Fatal(err)
@@ -351,7 +352,7 @@ func (d *Database) WriteImmatureBlock(block *types.BlockData, roundRewards map[s
 
 func (d *Database) writeFinances(total int64) error {
 	conn := d.Conn
-	_, err := conn.Exec("INSERT INTO finances(`coin`, `immature`) VALUES (?,?) ON DUPLICATE KEY UPDATE immature=immature+VALUE(immature)", d.Config.Coin, total)
+	_, err := conn.Exec("INSERT INTO finances(`coin`, `immature`) VALUES (?,?) ON DUPLICATE KEY UPDATE immature=immature+VALUES(immature)", d.Config.Coin, total)
 	if err != nil {
 		return err
 	}
@@ -400,7 +401,7 @@ func (d *Database) writeImmatureReward(block *types.BlockData, roundRewards map[
 		insertCnt++
 
 		if insertCnt > constInsertCountSqlMax {
-			minerRewardSql.WriteString( fmt.Sprintf(" ON DUPLICATE KEY UPDATE immature=immature+VALUE(immature)") )
+			minerRewardSql.WriteString( fmt.Sprintf(" ON DUPLICATE KEY UPDATE immature=immature+VALUES(immature)") )
 			blocksInfoSql = fmt.Sprintf("UPDATE blocks SET total_immatured_cnt=%v, total_immatured=%v WHERE state=%v AND round_height=%v AND nonce=\"%v\" AND coin=\"%v\"", count, total, constImmatureBlock, block.RoundHeight, block.Nonce, d.Config.Coin)
 			err := d.insertImmaturedBlock(minerRewardSql.String(), creditsRewardSql.String(), blocksInfoSql)
 			if err != nil {
@@ -416,7 +417,7 @@ func (d *Database) writeImmatureReward(block *types.BlockData, roundRewards map[
 	}
 
 	if insertCnt > 0 {
-		minerRewardSql.WriteString( fmt.Sprintf(" ON DUPLICATE KEY UPDATE immature=immature+VALUE(immature)") )
+		minerRewardSql.WriteString( fmt.Sprintf(" ON DUPLICATE KEY UPDATE immature=immature+VALUES(immature)") )
 		blocksInfoSql = fmt.Sprintf("UPDATE blocks SET total_immatured_cnt=%v, total_immatured=%v WHERE state=%v AND round_height=%v AND nonce=\"%v\" AND coin=\"%v\"", count, total, constImmatureBlock, block.RoundHeight, block.Nonce, d.Config.Coin)
 		err := d.insertImmaturedBlock(minerRewardSql.String(), creditsRewardSql.String(), blocksInfoSql)
 		if err != nil {
@@ -597,7 +598,7 @@ func (d *Database) updateCreditsImmature(creditsImmatureSql string, totalImmatur
 		return err
 	}
 
-	_, err = txRound.Exec("INSERT INTO finances(`coin`, `immature`) VALUES (?,?) ON DUPLICATE KEY UPDATE immature=immature+VALUE(immature)", d.Config.Coin, totalImmature)
+	_, err = txRound.Exec("INSERT INTO finances(`coin`, `immature`) VALUES (?,?) ON DUPLICATE KEY UPDATE immature=immature+VALUES(immature)", d.Config.Coin, totalImmature)
 	if err != nil {
 		return err
 	}
@@ -656,7 +657,7 @@ func (d *Database) calcuCreditsImmature(block *types.BlockData, immatureCredits 
 		updateCnt++
 
 		if updateCnt > constInsertCountSqlMax {
-			creditsImmatureSql.WriteString( fmt.Sprintf(" ON DUPLICATE KEY UPDATE immature=immature+VALUE(immature)") )
+			creditsImmatureSql.WriteString( fmt.Sprintf(" ON DUPLICATE KEY UPDATE immature=immature+VALUES(immature)") )
 			d.updateCreditsImmature(creditsImmatureSql.String(), totalImmature * -1)
 			totalImmature = 0
 			updateCnt = 0
@@ -664,7 +665,7 @@ func (d *Database) calcuCreditsImmature(block *types.BlockData, immatureCredits 
 	}
 
 	if updateCnt > 0 {
-		creditsImmatureSql.WriteString( fmt.Sprintf(" ON DUPLICATE KEY UPDATE immature=immature+VALUE(immature)") )
+		creditsImmatureSql.WriteString( fmt.Sprintf(" ON DUPLICATE KEY UPDATE immature=immature+VALUES(immature)") )
 
 		d.updateCreditsImmature(creditsImmatureSql.String(), totalImmature * -1)
 		updateCnt = 0
@@ -716,8 +717,8 @@ func (d *Database) makeMaturedBlcokSQL(block *types.BlockData,roundRewards map[s
 			insertCnt++
 		}
 
-		creditsBalanceSql.WriteString(" ON DUPLICATE KEY UPDATE insert_cnt=insert_cnt+1,amount=VALUE(amount)")
-		minerBalanceSql.WriteString(" ON DUPLICATE KEY UPDATE balance=balance+VALUE(balance)")
+		creditsBalanceSql.WriteString(" ON DUPLICATE KEY UPDATE insert_cnt=insert_cnt+1,amount=VALUES(amount)")
+		minerBalanceSql.WriteString(" ON DUPLICATE KEY UPDATE balance=balance+VALUES(balance)")
 		financesSql = fmt.Sprintf("UPDATE finances SET balance=balance+%v,last_height=%v,last_hash=\"%v\",total_mined=%v WHERE coin=\"%v\"",
 							total, strconv.FormatInt(block.Height, 10), block.Hash, block.RewardInShannon(), d.Config.Coin)
 	} else {

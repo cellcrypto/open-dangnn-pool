@@ -117,7 +117,10 @@ func (s *ProxyServer) ChoiceSubLogin(login string, ok bool, subLogin string) (st
 
 	var resultCount = 1
 
+	s.subMinerMu.RLock()
 	minerSubInfo, ok := s.subMiner[login]
+	s.subMinerMu.RUnlock()
+
 	if !ok || minerSubInfo.timeout < util.MakeTimestamp() {
 		// separation work
 		subLogins, subLoginMap := s.db.ChoiceSubMiner(login)
@@ -135,7 +138,9 @@ func (s *ProxyServer) ChoiceSubLogin(login string, ok bool, subLogin string) (st
 			minerSubInfo.timeout = util.MakeTimestamp() + 60*10*1000
 		}
 
+		s.subMinerMu.Lock()
 		s.subMiner[login] = minerSubInfo
+		s.subMinerMu.Unlock()
 	}
 
 	if minerSubInfo.subLogins != nil {

@@ -4,11 +4,13 @@ go 1.17
 
 require (
 	github.com/deckarep/golang-set v1.8.0
+	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/ethereum/ethash v0.0.0-20170407112842-f5f0a8b19625
 	github.com/ethereum/go-ethereum v1.6.1
 	github.com/go-sql-driver/mysql v1.6.0
 	github.com/gorilla/mux v1.8.0
 	github.com/yvasiyarov/gorelic v0.0.7
+	golang.org/x/crypto v0.0.0-20170930174604-9419663f5a44
 	gopkg.in/redis.v3 v3.6.4
 )
 

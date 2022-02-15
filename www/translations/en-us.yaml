@@ -7,5 +7,5 @@ product:
 
 account:
   earnings:
-    miner: Earnings per day (3h avg)
-    worker: Earnings / day (short avg)
+    miner: Earnings per day (24h avg)
+    worker: Earnings / day (24h avg)

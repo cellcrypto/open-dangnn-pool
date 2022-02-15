@@ -1,0 +1,53 @@
+<div class="container">
+  <div>
+    <h4>Separate wallets by device <button type="button" class="btn btn-danger btn-sm" data-toggle="modal" data-target="#addModal">add</button></h4>
+  </div>
+  <div class="container">
+    <div class="stats">
+      <h4>Your Stats &amp; Payment History</h4>
+      <div class="input-group">
+        {{input value=cachedDevId class="form-control" placeholder="Enter Your Dangnn Address"}}
+        <span class="input-group-btn">
+          <button class="btn btn-primary" type="button" {{action 'search' cachedDevId}}>
+            <span style="display: inline;"><i class="fa fa-search"></i> Search</span>
+          </button>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  {{#if model.devlist}}
+  <div class="table-responsive">
+    <table class="table table-condensed table-striped">
+      <thead>
+        <tr>
+          <th>DevID</th>
+          <th>SubDevID</th>
+          <th>amount</th>
+          <th>X</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each model.devlist as |devs|}}
+          <tr>
+            <td>
+              {{devs.DevAddr}}
+            </td>
+            <td>
+              {{devs.SubAddr}}
+            </td>
+            <td>
+              {{devs.Amount}}
+            </td>
+            <td>
+              <button {{ action "delete" devs.devid devs.subdevid}} class="btn btn-danger btn-sm">delete</button>
+            </td>
+          </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <h3>No Search List yet</h3>
+  {{/if}}
+</div>

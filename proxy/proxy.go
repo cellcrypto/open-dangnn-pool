@@ -38,6 +38,7 @@ type ProxyServer struct {
 	sessions   map[*Session]struct{}
 	timeout    time.Duration
 
+	subMinerMu sync.RWMutex
 	subMiner map[string]*MinerSubInfo
 }
 

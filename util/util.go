@@ -1,6 +1,7 @@
 package util
 
 import (
+	"golang.org/x/crypto/bcrypt"
 	"math/big"
 	"regexp"
 	"strconv"
@@ -136,3 +137,16 @@ func Join(args ...interface{}) string {
 	return strings.Join(s, ":")
 }
 
+func HashPassword(password string) ([]byte, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	return bytes, err
+}
+
+func CheckPasswordHash(hashVal, userPw string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(hashVal), []byte(userPw))
+	if err != nil {
+		return false
+	} else {
+		return true
+	}
+}

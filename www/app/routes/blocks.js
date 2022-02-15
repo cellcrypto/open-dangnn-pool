@@ -3,9 +3,27 @@ import Block from "../models/block";
 import config from '../config/environment';
 
 export default Ember.Route.extend({
+  auth: Ember.inject.service('auth'),
+
+  actions: {
+    error: function(reason, transition) {
+      this.transitionTo('/login');
+      console.log(reason + transition);
+      return false;
+    }
+  },
+
 	model: function() {
     var url = config.APP.ApiUrl + 'api/blocks';
-    return Ember.$.getJSON(url).then(function(data) {
+    return Ember.$.ajax({
+      method: 'get',
+      url: url,
+      crossDomain: true,
+      xhrFields: {
+        withCredentials: true
+      },
+      //headers: {"Ction": "close"},
+    }).then(function(data) {
 			if (data.candidates) {
 				data.candidates = data.candidates.map(function(b) {
 					return Block.create(b);
@@ -24,6 +42,12 @@ export default Ember.Route.extend({
 			return data;
     });
 	},
+
+  beforeModel() {
+    if(!this.get('auth').isLoggedIn()) {
+        this.transitionTo('login');
+    }
+  },
 
   setupController: function(controller, model) {
     this._super(controller, model);

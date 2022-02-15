@@ -77,8 +77,10 @@ func readConfig(cfg *proxy.Config) {
 
 	if cfg.Mysql.Coin == "" {
 		cfg.Mysql.Coin = cfg.Coin
+		cfg.Mysql.Threshold = cfg.Payouts.Threshold
 	}
 
+	cfg.Api.Threshold = cfg.Payouts.Threshold
 	cfg.Api.Coin = cfg.Coin
 	cfg.Api.Name = cfg.Name
 	cfg.Api.Depth = cfg.BlockUnlocker.Depth

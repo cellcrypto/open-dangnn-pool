@@ -29,6 +29,8 @@ module.exports = function(environment) {
       PoolFee: '0.9%',
       PayoutThreshold: '0.5 Ether',
 
+      scanerURL: 'http://explorer.dangnn.com/',
+
       // For network hashrate (change for your favourite fork)
       BlockTime: 14.4,
       BlockReward: 300,

@@ -11,11 +11,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/mux"
-
 	"github.com/cellcrypto/open-dangnn-pool/storage/mysql"
 	"github.com/cellcrypto/open-dangnn-pool/storage/redis"
 	"github.com/cellcrypto/open-dangnn-pool/util"
+	"github.com/dgrijalva/jwt-go"
+	"github.com/gorilla/mux"
 )
 
 type ApiConfig struct {
@@ -37,7 +37,10 @@ type ApiConfig struct {
 	PurgeInterval        string `json:"purgeInterval"`
 	Coin				string
 	Name 				string
-	Depth				int64
+	Depth        int64
+	// In Shannon
+	Threshold 			int64 `json:"threshold"`
+	AccessSecret 		string `json:"AccessSecret"`
 }
 
 type ApiServer struct {
@@ -61,6 +64,11 @@ type Entry struct {
 	stats     map[string]interface{}
 	updatedAt int64
 }
+
+const (
+	basicTokenExpiration = int64(15)
+	unLimitTokenExpiration = int64(26280000)
+)
 
 func NewApiServer(cfg *ApiConfig, coin string, name string, backend *redis.RedisClient, db *mysql.Database) *ApiServer {
 	hashrateWindow := util.MustParseDuration(cfg.HashrateWindow)
@@ -163,25 +171,187 @@ func (s *ApiServer) Start() {
 	}
 }
 
-func authenticationMiddleware (next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		//token := r.Header.Get("X-Access-Token")
+func (s *ApiServer) VerifyToken(accessToken string) (*jwt.Token, error) {
+	token, err := jwt.Parse(accessToken, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(s.config.AccessSecret), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return token, nil
+}
 
+func (s *ApiServer) TokenValid(accessToken string) (*jwt.Token,error) {
+	token, err := s.VerifyToken(accessToken)
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := token.Claims.(jwt.Claims); !ok && !token.Valid {
+		return nil, err
+	}
+	return token, nil
+}
+
+func (s *ApiServer) authenticationMiddleware (next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		//token := r.Header.Get("access-token")
+
+		requestURL := strings.Split(r.RequestURI,"/")
+		if len(requestURL) > 1 {
+			switch requestURL[1] {
+			case "signin","token":
+				next.ServeHTTP(w, r)
+				return
+			}
+			passed, errStr := s.CheckJwtToken(r, requestURL[1])
+			if !passed {
+				s.ServerError(w, r, errStr)
+				return
+			}
+		} else {
+			s.ServerError(w, r, "nothing page URI")
+			return
+		}
+
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		} else {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
 		next.ServeHTTP(w, r)
 	})
 }
 
+func (s *ApiServer) CheckJwtToken(r *http.Request, requestURI string) (bool,string) {
+	idToken := r.Header.Get("API_KEY")
+	if idToken == "" {
+		cookies:= r.Cookies()
+		for _, c := range cookies {
+			fmt.Println("cookie: ", c)
+		}
+
+		cookie, _ := r.Cookie("access-token")
+		if cookie == nil || len(cookie.Value) <= 0 {
+			return false, "unauthorized: non cookie"
+		}
+		idToken = cookie.Value
+	}
+
+	token, err := s.TokenValid(idToken)
+	if err != nil {
+		return false, "unauthorized: " + err.Error()
+	}
+
+	access, ok := token.Claims.(jwt.MapClaims)["access"]
+	if !ok {
+		return false, "unauthorized: nothing access"
+	}
+
+	var login string
+
+	if devId, ok := token.Claims.(jwt.MapClaims)["DevId"]; ok {
+		if access != "user" {
+			return false, "unauthorized: non argument"
+		}
+
+		r.Header.Set("DevId", devId.(string))
+
+		login = strings.ToLower(mux.Vars(r)["login"])
+		if devId.(string) != "all" {
+			if login != devId.(string) {
+				return false, "unauthorized: diff argument"
+			}
+		} else {
+			login = devId.(string)
+		}
+	} else {
+		if access != "all" {
+			return false, "unauthorized: non argument"
+		}
+
+		login, _ = token.Claims.(jwt.MapClaims)["user_id"].(string)
+	}
+
+	accessFlag := false
+	if access, ok := token.Claims.(jwt.MapClaims)["access"]; ok {
+		accesURI := strings.Split( access.(string), ",")
+		for _, uri := range accesURI {
+			if uri == requestURI || uri == "all" {
+				accessFlag = true
+				break
+			}
+		}
+		if accessFlag == false {
+			return false, "unauthorized: Invalid Access"
+		}
+	} else {
+		return false, "unauthorized: Invalid Claims"
+	}
+	accessSign, err := s.backend.GetToken(util.Join(s.config.Coin, login))
+	if err != nil {
+		return false, "unauthorized: Invalid login"
+	}
+	if strings.Compare(accessSign, token.Signature) != 0 {
+		return false, "unauthorized: Invalid sign"
+	}
+	return true, ""
+}
+
+func (s *ApiServer) ServerError(w http.ResponseWriter, r *http.Request, errMsg string) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+	} else {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+	}
+	//w.Header().Set("Access-Control-Allow-Header", "access-token")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	w.WriteHeader(http.StatusUnauthorized)
+	//w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"msg": errMsg,
+	})
+	return
+}
+
 func (s *ApiServer) listen() {
 	r := mux.NewRouter()
+	//apiRouter := r.GetRoute("api")
+	//apiRouter.
 	r.HandleFunc("/api/stats", s.StatsIndex)
 	r.HandleFunc("/api/miners", s.MinersIndex)
 	r.HandleFunc("/api/blocks", s.BlocksIndex)
 	r.HandleFunc("/api/payments", s.PaymentsIndex)
 	r.HandleFunc("/api/accounts/{login:0x[0-9a-fA-F]{40}}", s.AccountIndex)
+	r.HandleFunc("/user/accounts/{login:0x[0-9a-fA-F]{40}}", s.AccountExIndex)
 	r.HandleFunc("/user/payout/{login:0x[0-9a-fA-F]{40}}/{value:[0-9]+}", s.PayoutLimitIndex)
+	r.HandleFunc("/signin", s.SignInIndex)
+	r.HandleFunc("/signup", s.SignupIndex)
+	r.HandleFunc("/token", s.GetTokenIndex).Methods("POST")
+	r.HandleFunc("/api/inbounds", s.InboundListIndex)
+	r.HandleFunc("/api/saveinbound", s.SaveInboundIndex)
+	r.HandleFunc("/api/delinbound", s.DelInboundIndex)
+	r.HandleFunc("/api/idbounds", s.DevIdInboundListIndex)
+	r.HandleFunc("/api/saveidbounds", s.InboundListIndex)
+	r.HandleFunc("/api/delidbounds", s.InboundListIndex)
+	r.HandleFunc("/api/devsearch", s.GetLikeDevSubListIndex)
+
+
+	r.HandleFunc("/test", s.TestIndex)
+
+
+
 	//r.HandleFunc("/api/accounts/{login:0x[0-9a-fA-F]{40}}/{personal:0x[0-9a-fA-F]{40}}", s.AccountIndexEx)
 	r.NotFoundHandler = http.HandlerFunc(notFound)
-	r.Use(authenticationMiddleware )
+	r.Use(s.authenticationMiddleware )
 
 	err := r.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
 		pathTemplate, err := route.GetPathTemplate()
@@ -216,7 +386,7 @@ func (s *ApiServer) listen() {
 
 func notFound(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusNotFound)
 }
@@ -259,7 +429,6 @@ func (s *ApiServer) collectStats() {
 
 func (s *ApiServer) StatsIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusOK)
 
@@ -290,7 +459,7 @@ func (s *ApiServer) StatsIndex(w http.ResponseWriter, r *http.Request) {
 
 func (s *ApiServer) MinersIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusOK)
 
@@ -311,7 +480,7 @@ func (s *ApiServer) MinersIndex(w http.ResponseWriter, r *http.Request) {
 
 func (s *ApiServer) BlocksIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusOK)
 
@@ -335,7 +504,7 @@ func (s *ApiServer) BlocksIndex(w http.ResponseWriter, r *http.Request) {
 
 func (s *ApiServer) PaymentsIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusOK)
 
@@ -353,12 +522,27 @@ func (s *ApiServer) PaymentsIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *ApiServer) TestIndex(w http.ResponseWriter, r *http.Request) {
+	expiration := time.Now().Add(365 * 24 * time.Hour)
+	cookie    :=    http.Cookie{Name: "csrftsfdasoken",Value:"abcd",Expires:expiration}
+	http.SetCookie(w, &cookie)
+	//http.SetCookie(w, &http.Cookie{
+	//	Name: "name of cookie",
+	//	Value: "value of cookie",
+	//	Path: "/",
+	//})
 
+	w.WriteHeader(http.StatusOK)
+	err := json.NewEncoder(w).Encode(map[string]string {
+		"tesst":"testddd",
+	})
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
 }
 
 func (s *ApiServer) AccountIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Cache-Control", "no-cache")
 
 	login := strings.ToLower(mux.Vars(r)["login"])
@@ -424,9 +608,79 @@ func (s *ApiServer) AccountIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 
+func (s *ApiServer) AccountExIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	login := strings.ToLower(mux.Vars(r)["login"])
+	s.minersMu.Lock()
+	defer s.minersMu.Unlock()
+
+	reply, ok := s.miners[login]
+	now := util.MakeTimestamp()
+	ts := now / 1000
+	cacheIntv := int64(s.statsIntv / time.Millisecond)
+	// Refresh stats if stale
+	if !ok || reply.updatedAt < now-cacheIntv {
+		exist, err := s.db.IsMinerExists(login)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Printf("Failed to fetch stats from backend: %v", err)
+			return
+		}
+		if !exist {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+
+		stats, err := s.backend.GetMinerStats(login, s.config.Payments)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Printf("Failed to fetch stats from backend: %v", err)
+			return
+		}
+		reportedHash, _ := s.backend.GetReportedtHashrate(login)
+		workers, err := s.backend.CollectWorkersStats(s.hashrateWindow, s.hashrateLargeWindow, login, reportedHash)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Printf("Failed to fetch stats from backend: %v", err)
+			return
+		}
+
+		for key, value := range workers {
+			stats[key] = value
+		}
+		stats["pageSize"] = s.config.Payments
+		stats["minPayout"] = s.config.Threshold
+		stats["maxPayout"] = s.config.Threshold * 100
+		stats["minerCharts"], err = s.db.GetMinerCharts(s.config.MinerChartsNum, s.minerPoolChartIntv, login, ts)
+		//stats["minerCharts"], err = s.backend.GetMinerCharts(s.config.MinerChartsNum, login)
+		//stats["paymentCharts"], err = s.backend.GetPaymentCharts(login)
+
+		statsM := s.getStats()
+		if stats != nil {
+			stats["statsm"] = statsM["stats"]
+			stats["hashrateTotal"] = statsM["hashrate"]
+			stats["minersTotal"] = statsM["minersTotal"]
+			stats["poolBalanceOnce"] = statsM["poolBalanceOnce"]
+		}
+
+		reply = &Entry{stats: stats, updatedAt: now}
+		s.miners[login] = reply
+	}
+
+	w.WriteHeader(http.StatusOK)
+	err := json.NewEncoder(w).Encode(reply.stats)
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
 func (s *ApiServer) PayoutLimitIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Cache-Control", "no-cache")
 
 	login := strings.ToLower(mux.Vars(r)["login"])
@@ -439,13 +693,378 @@ func (s *ApiServer) PayoutLimitIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	reply := make(map[string]interface{})
-	reply["stats"] = "ok"
+	reply["msg"] = "ok"
 	w.WriteHeader(http.StatusOK)
 	err := json.NewEncoder(w).Encode(reply)
 	if err != nil {
 		log.Println("Error serializing API response: ", err)
 	}
 }
+
+func (s *ApiServer) SignInIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	switch r.Method {
+	case "GET":
+		http.ServeFile(w, r, "#/login")
+		return
+	case "POST":
+	default:
+		fmt.Fprintf(w, "Sorry, only GET and POST methods are supported.")
+		return
+	}
+
+	var user User
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+		log.Printf("failed to Decode: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	passDb, access, err := s.db.GetAccountPassword(user.Username)
+	if err != nil {
+		log.Printf("failed to DB Connected: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if !util.CheckPasswordHash(passDb, user.Password) {
+		log.Printf("failed to password is different: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string {
+			"error": fmt.Sprintf("password is different: %v", err),
+		})
+		return
+	}
+
+	// 권한 체크
+
+
+	// 토큰 발급
+	token, _ := s.CreateUserToken(user.Username, access, basicTokenExpiration)
+
+	tokenSplit := strings.Split(token,".")
+	if len(tokenSplit) != 3 {
+		return
+	}
+	// 레디스에 devid로 토큰을 등록 한다.
+	s.backend.SetToken(util.Join(s.config.Coin, user.Username), tokenSplit[2],basicTokenExpiration)
+
+
+	cookie := new(http.Cookie)
+	cookie.Name = "access-token"
+	cookie.Value = token
+	cookie.HttpOnly = true
+	cookie.Expires = time.Now().Add(time.Hour * 24)
+
+	http.SetCookie(w, cookie)
+
+	reply := make(map[string]interface{})
+	reply["msg"] = "ok"
+	reply["token"] = token
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(reply)
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
+
+func (s *ApiServer) GetTokenIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	switch r.Method {
+	case "GET":
+		http.ServeFile(w, r, "#/login")
+		return
+	case "POST":
+	default:
+		fmt.Fprintf(w, "Sorry, only GET and POST methods are supported.")
+		return
+	}
+
+	var userToken UserToken
+	if err := json.NewDecoder(r.Body).Decode(&userToken); err != nil {
+		log.Printf("failed to Decode: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var tokenExp = basicTokenExpiration
+	if userToken.DevId != "all" {
+		if !util.IsValidHexAddress(userToken.DevId) {
+			log.Printf("failed to DevId: %v", userToken.DevId)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+	} else {
+		tokenExp = unLimitTokenExpiration
+	}
+
+
+	passDb, access, err := s.db.GetAccountPassword(userToken.Username)
+	if err != nil {
+		log.Printf("failed to DB Connected: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if !util.CheckPasswordHash(passDb, userToken.Password) {
+		log.Printf("failed to password is different: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string {
+			"error": fmt.Sprintf("password is different: %v", err),
+		})
+		return
+	}
+
+	// Permission Check
+
+
+	// Token Issuance
+	token, _ := s.CreateToken(userToken.DevId, access, tokenExp)
+
+	tokenSplit := strings.Split(token,".")
+	if len(tokenSplit) != 3 {
+		return
+	}
+	// Register token as devid in Redis.
+	s.backend.SetToken(util.Join(s.config.Coin, userToken.DevId), tokenSplit[2],tokenExp)
+
+
+	cookie := new(http.Cookie)
+	cookie.Name = "access-token"
+	cookie.Value = token
+	cookie.HttpOnly = true
+	cookie.Expires = time.Now().Add(time.Hour * 24)
+
+	http.SetCookie(w, cookie)
+
+	reply := make(map[string]interface{})
+	reply["msg"] = "ok"
+	reply["token"] = token
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(reply)
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
+type User struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type UserToken struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	DevId    string `json:"devid"`
+}
+
+type DbIPInbound struct {
+	Ip string `json:"ip"`
+	Rule string `json:"rule"`
+	Desc    string `json:"desc"`
+}
+
+type DevSubList struct {
+	DevId 	string `json:"devid"`
+	SubId 	string `json:"subid"`
+	Amount  string `json:"amount"`
+}
+
+func (s *ApiServer) InboundListIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+
+	inboundList, err := s.db.GetIpInboundList()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Printf("Failed to UpdatePayoutLimit()")
+		return
+	}
+
+	reply := make(map[string]interface{})
+	reply["inbounds"] = inboundList
+	reply["msg"] = "ok"
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(reply)
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
+func (s *ApiServer) SaveInboundIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	var ipInbound DbIPInbound
+	if err := json.NewDecoder(r.Body).Decode(&ipInbound); err != nil {
+		log.Printf("failed to Decode: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// validation data
+	if util.StringInSlice(ipInbound.Rule,[]string{"allow", "deny"}) == false {
+		return
+	}
+
+
+	saveFlag := s.db.SaveIpInbound(ipInbound.Ip,ipInbound.Rule)
+
+	reply := make(map[string]interface{})
+	if saveFlag {
+		reply["state"] = "true"
+		reply["msg"] = "ok"
+	} else {
+		reply["state"] = "false"
+		reply["msg"] = "failed"
+	}
+
+	w.WriteHeader(http.StatusOK)
+	err := json.NewEncoder(w).Encode(reply)
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
+
+func (s *ApiServer) DelInboundIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	var ipInbound DbIPInbound
+	if err := json.NewDecoder(r.Body).Decode(&ipInbound); err != nil {
+		log.Printf("failed to Decode: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// validation data
+
+
+
+	saveFlag := s.db.DelIpInbound(ipInbound.Ip)
+
+	reply := make(map[string]interface{})
+	if saveFlag {
+		reply["state"] = "true"
+		reply["msg"] = "ok"
+	} else {
+		reply["state"] = "false"
+		reply["msg"] = "failed"
+	}
+
+	w.WriteHeader(http.StatusOK)
+	err := json.NewEncoder(w).Encode(reply)
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
+
+func (s *ApiServer) DevIdInboundListIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+
+	idboundList, err := s.db.GetIdInboundList()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Printf("Failed to UpdatePayoutLimit()")
+		return
+	}
+
+	reply := make(map[string]interface{})
+	reply["idbounds"] = idboundList
+	reply["msg"] = "ok"
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(reply)
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
+func (s *ApiServer) GetLikeDevSubListIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+
+	var devSubList DevSubList
+	if err := json.NewDecoder(r.Body).Decode(&devSubList); err != nil {
+		log.Printf("failed to Decode: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	devList, err := s.db.GetLikeMinerSubList(devSubList.DevId)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Printf("Failed to UpdatePayoutLimit()")
+		return
+	}
+
+	reply := make(map[string]interface{})
+	reply["devlist"] = devList
+	reply["msg"] = "ok"
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(reply)
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
+func (s *ApiServer) SignupIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	log.Println("Sign up")
+	var user User
+
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+		log.Printf("failed to Decode: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	hashedPassword, err := util.HashPassword(user.Password)
+	if err != nil {
+		log.Printf("failed to GenerateFromPassword: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+
+	if !s.db.CreateAccount(user.Username, hashedPassword) {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Printf("Failed to UpdatePayoutLimit()")
+		return
+	}
+
+	reply := make(map[string]interface{})
+	reply["msg"] = "ok"
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(reply)
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
+
+
 //
 //func (s *ApiServer) AccountIndexEx(w http.ResponseWriter, r *http.Request) {
 //	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -539,4 +1158,36 @@ func (s *ApiServer) collectMinerCharts(login string, hash int64, largeHash int64
 	if err != nil {
 		log.Printf("Failed to fetch miner %v charts from backend: %v", login, err)
 	}
+}
+
+func (s *ApiServer) CreateToken(devId, access string, expirationMin int64) (string, error) {
+	var err error
+	//Creating Access Token
+	atClaims := jwt.MapClaims{}
+	atClaims["authorized"] = true
+	atClaims["DevId"] = devId
+	atClaims["access"] = access
+	atClaims["exp"] = time.Now().Add(time.Minute * time.Duration(expirationMin)).Unix()
+	at := jwt.NewWithClaims(jwt.SigningMethodHS256, atClaims)
+	token, err := at.SignedString([]byte(s.config.AccessSecret))
+	if err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+func (s *ApiServer) CreateUserToken(id, access string, expirationMin int64) (string, error) {
+	var err error
+	//Creating Access Token
+	atClaims := jwt.MapClaims{}
+	atClaims["authorized"] = true
+	atClaims["user_id"] = id
+	atClaims["access"] = access
+	atClaims["exp"] = time.Now().Add(time.Minute * time.Duration(expirationMin)).Unix()
+	at := jwt.NewWithClaims(jwt.SigningMethodHS256, atClaims)
+	token, err := at.SignedString([]byte(s.config.AccessSecret))
+	if err != nil {
+		return "", err
+	}
+	return token, nil
 }

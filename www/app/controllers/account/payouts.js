@@ -4,6 +4,7 @@ export default Ember.Controller.extend({
   applicationController: Ember.inject.controller('application'),
   stats: Ember.computed.reads('applicationController.model.stats'),
   intl: Ember.inject.service(),
+  config: Ember.computed.reads('applicationController.config'),
 
   chartPaymentText: Ember.computed('model', {
     get() {

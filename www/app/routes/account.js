@@ -4,7 +4,14 @@ import config from '../config/environment';
 export default Ember.Route.extend({
 	model: function(params) {
 		var url = config.APP.ApiUrl + 'api/accounts/' + params.login;
-    return Ember.$.getJSON(url).then(function(data) {
+    return Ember.$.ajax({
+      method: 'get',
+      url: url,
+      crossDomain: true,
+      xhrFields: {
+        withCredentials: true
+      },
+    }).then(function(data) {
       data.login = params.login;
       return Ember.Object.create(data);
     });

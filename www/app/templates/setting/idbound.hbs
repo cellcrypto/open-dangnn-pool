@@ -1,0 +1,81 @@
+<div class="container">
+  {{#if model.idbounds}}
+  <h4>InBound DevID List <button type="button" class="btn btn-danger btn-sm" data-toggle="modal" data-target="#addModal">add</button></h4>
+
+  <!-- Modal -->
+  <div class="modal fade" id="addModal" tabindex="-1" aria-labelledby="addModal" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          
+          <h5 class="modal-title" id="addModal">Ip Input</h5>
+          <ul class="errors">
+            {{#each errors as |error|}}
+              <li>{{error.message}}</li>
+            {{/each}}
+          </ul>
+          {{!-- <button type="button" class="btn-close" data-dismiss="modal" aria-label="Close"></button> --}}
+        </div>
+        <div class="modal-body">
+          <div class="input-group">
+            <label for="comment">Dev ID:  </label>
+            {{input value="" change=(action "required") placeholder="0x..." name="id"}}
+            <br>
+            <label for="sel1">Rule:</label>
+            <select onchange={{action (mut selectedRule) value='target.value'}}>
+              {{#each options as |option|}}
+                <option value={{option}}>{{option}}</option>
+              {{/each}}
+            </select>
+            {{!-- <select class="dropdown" id="sel1">
+              <option>Allow</option>
+              <option>deny</option>
+            </select> --}}
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+          <button type="button" {{ action "add" }} data-dismiss="modal" class="btn btn-primary">ADD</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-condensed table-striped">
+      <thead>
+        <tr>
+          <th>Dev ID</th>
+          <th>Allowed</th>
+          <th>Desc</th>
+          <th>X</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each model.idbounds as |idbound|}}
+          <tr>
+            <td>
+              {{idbound.Id}}
+            </td>
+            <td>
+              {{#if idbound.Allowed}}
+                allow
+              {{else}}
+                deny
+              {{/if}}
+            </td>
+            <td>
+              {{idbound.Desc}}
+            </td>
+            <td>
+                <button {{ action "delete" idbound.Id}} class="btn btn-danger btn-sm">delete</button>
+            </td>
+          </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <h3>No inboud List yet</h3>
+  {{/if}}
+</div>

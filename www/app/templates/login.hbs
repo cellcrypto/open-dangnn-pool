@@ -1,0 +1,14 @@
+{{! app/templates/components/login.hbs }}
+
+<div class="login-container">
+  <div id="login-form">
+    <form {{action 'authenticate' on='submit'}}>
+      <label for="lusername">Login</label>
+      {{input value=login placeholder='Login' type='text' name='username' id='username'}}
+      <label for="lpassword">Password</label>
+      {{input value=password placeholder='Password' type='password' id='password'}}<br>
+
+      <input type="submit" value="SUBMIT" tabindex="5" id="login-submit" />
+    </form>
+  </div>
+</div>

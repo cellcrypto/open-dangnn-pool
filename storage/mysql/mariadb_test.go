@@ -17,7 +17,7 @@ func TestMain(m *testing.M) {
 	db, _ =New(&Config{
 		Endpoint: "127.0.0.1",
 		UserName: "root",
-		Password: "thtm007!@#",
+		Password: "test!@#",
 		Database: "pool",
 		Port:     3308,
 		PoolSize: 30,
@@ -61,7 +61,7 @@ func TestCreditsBlocksCheck(t *testing.T)  {
 				t.Errorf("not found block index(%v:%v) hash: %v %v", iHeight, blockHeight, block.Hash,hash)
 			}
 
-			// 엉클 블록?
+			// Uncle Block?
 			uncleFlag := false
 			for _, v := range block.Uncles {
 				if v == hash {

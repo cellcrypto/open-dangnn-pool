@@ -26,6 +26,7 @@ type Config struct {
 	PoolSize int    `json:"poolSize"`
 
 	Coin 	string  `json:"coin"`
+	Threshold int64 `json:"threshold"`
 }
 
 type Database struct {
@@ -352,9 +353,9 @@ func (d *Database) writeFinances(total int64) error {
 	conn := d.Conn
 	_, err := conn.Exec("INSERT INTO finances(`coin`, `immature`) VALUES (?,?) ON DUPLICATE KEY UPDATE immature=immature+VALUE(immature)", d.Config.Coin, total)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-	return err
+	return nil
 }
 
 func (d *Database) writeImmatureReward(block *types.BlockData, roundRewards map[string]int64, percents map[string]*big.Rat) (int64, error) {
@@ -964,7 +965,7 @@ func (d *Database) convertBlockResults(state int, height int64, roundHeight int6
 
 func (d *Database) GetPayees(max string) ([]*Payees, error) {
 	conn := d.Conn
-	rows, err := conn.Query("SELECT coin,login_addr, balance, payout_limit FROM miner_info WHERE balance > ? AND balance > payout_limit AND coin=?", max, d.Config.Coin)
+	rows, err := conn.Query("SELECT coin,login_addr, balance, payout_limit FROM miner_info WHERE ((payout_limit = 0 AND balance > ?) or (payout_limit > 0 AND balance > payout_limit) )AND coin=?", max, d.Config.Coin)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1139,7 +1140,7 @@ func (d *Database) WriteMinerCharts(time1 int64, time2, k string, hash, largeHas
 	conn := d.Conn
 	_, err := conn.Exec("INSERT INTO miner_charts(login_addr,time,time2,hash,large_hash,report_hash,share,work_online) VALUE (?,?,?,?,?,?,?,?)",k, time1, time2,hash, largeHash, report, share, workerOnline)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	return nil
@@ -1166,7 +1167,7 @@ func (d *Database) GetMinerStats(login string, maxPayments int64) (map[string]in
 
 func (d *Database) getMinerInfo(login string) (map[string]interface{}, int64, error) {
 	conn := d.Conn
-	rows, err := conn.Query("SELECT balance, pending, paid, immature, matured, blocks_found, last_share, payout_cnt FROM miner_info WHERE login_addr=?", login)
+	rows, err := conn.Query("SELECT balance, pending, paid, immature, matured, blocks_found, last_share, payout_limit, payout_cnt FROM miner_info WHERE coin=? AND login_addr=?", d.Config.Coin, login)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1176,10 +1177,10 @@ func (d *Database) getMinerInfo(login string) (map[string]interface{}, int64, er
 	minerPaymentCnt := int64(0)
 	for rows.Next() {
 		var (
-			balance, pending, paid, immature, matured, blocksFound, lastShare string
+			balance, pending, paid, immature, matured, blocksFound, lastShare, payoutLimit string
 		)
 
-		err := rows.Scan(&balance, &pending, &paid, &immature, &matured, &blocksFound, &lastShare, &minerPaymentCnt)
+		err := rows.Scan(&balance, &pending, &paid, &immature, &matured, &blocksFound, &lastShare, &payoutLimit, &minerPaymentCnt)
 		if err != nil {
 			log.Printf("mysql GetMinerInfo:rows.Scan() error: %v",err)
 			return nil, 0, err
@@ -1191,6 +1192,14 @@ func (d *Database) getMinerInfo(login string) (map[string]interface{}, int64, er
 		d.convertStringMap(result, "immature", immature)
 		d.convertStringMap(result, "matured", matured)
 		d.convertStringMap(result, "blocksFound", blocksFound)
+
+		amountInShannon, _:= strconv.ParseInt(payoutLimit,10,64)
+		if  amountInShannon > d.Config.Threshold {
+			d.convertStringMap(result, "payoutLimit", payoutLimit)
+		} else {
+			d.convertStringMap(result, "payoutLimit", strconv.FormatInt(d.Config.Threshold, 10))
+		}
+
 		intlastShare := util.MakeTimestampDB2(lastShare) / 1000
 		d.convertStringMap(result, "lastShare", strconv.FormatInt(intlastShare, 10))
 	}
@@ -1486,7 +1495,7 @@ func (d *Database) GetPoolBalanceByOnce(maxHeight, minHeight int64, coin string)
 func (d *Database) IsMinerExists(login string) (bool,error) {
 	conn := d.Conn
 
-	rows, err := conn.Query("SELECT login_addr FROM miner_info WHERE login_addr=?", login)
+	rows, err := conn.Query("SELECT login_addr FROM miner_info WHERE coin=? AND login_addr=?",d.Config.Coin, login)
 	if err != nil {
 		return true, err
 	}
@@ -1502,7 +1511,7 @@ func (d *Database) ChoiceSubMiner(login string) ([]string, map[string]int){
 	conn := d.Conn
 	var result []string
 	var resultMap map[string]int
-	rows, err := conn.Query("SELECT sub_addr,weight FROM miner_sub WHERE login_addr=?", login)
+	rows, err := conn.Query("SELECT sub_addr,weight FROM miner_sub WHERE coin=? AND login_addr=?", d.Config.Coin, login)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1548,7 +1557,7 @@ func (d *Database) ChoiceSubMiner2(login string) (map[string]int64,int64){
 		weightCount int64
 	)
 
-	rows, err := conn.Query("SELECT sub_addr,weight FROM miner_sub WHERE login_addr=?", login)
+	rows, err := conn.Query("SELECT sub_addr,weight FROM miner_sub WHERE coin=? AND login_addr=?", d.Config.Coin, login)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1586,7 +1595,7 @@ func (d *Database) ChoiceSubMiner2(login string) (map[string]int64,int64){
 
 func (d *Database) GetIpInboundList() ([]*types.InboundIpList, error) {
 	conn := d.Conn
-	rows, err := conn.Query("SELECT ip,rule FROM inbound_ip WHERE coin=?",d.Config.Coin)
+	rows, err := conn.Query("SELECT ip,rule,`desc` FROM inbound_ip WHERE coin=?",d.Config.Coin)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1596,10 +1605,10 @@ func (d *Database) GetIpInboundList() ([]*types.InboundIpList, error) {
 
 	for rows.Next() {
 		var (
-			ip,rule string
+			ip,rule,desc string
 
 		)
-		err := rows.Scan(&ip, &rule)
+		err := rows.Scan(&ip, &rule, &desc)
 		if err != nil {
 			log.Printf("mysql GetIpInboundList:rows.Scan() error: %v", err)
 			return nil, err
@@ -1611,16 +1620,46 @@ func (d *Database) GetIpInboundList() ([]*types.InboundIpList, error) {
 		result = append(result, &types.InboundIpList{
 			Ip:      ip,
 			Allowed: allowed,
+			Desc: desc,
 		})
 	}
 
 	return result, nil
 }
 
+func (d *Database) SaveIpInbound(ip,rule string) bool {
+	conn := d.Conn
+
+	ret,err := conn.Exec("INSERT INTO inbound_ip(coin,ip,rule) VALUES (?,?,?)", d.Config.Coin, ip, rule)
+	if err != nil {
+		log.Printf("mysql SaveIpInbound:Exec() error: %v", err)
+		return false
+	}
+
+	if ok,_ := ret.RowsAffected(); ok <= 0  {
+		return false
+	}
+
+	return true
+}
+
+func (d *Database) DelIpInbound(ip string) bool {
+	conn := d.Conn
+
+	_,err := conn.Exec("DELETE FROM inbound_ip WHERE coin=? AND ip=?", d.Config.Coin, ip)
+	if err != nil {
+		log.Printf("mysql DelIpInbound:Exec() error: %v", err)
+		return false
+	}
+
+	return true
+}
+
+
 func (d *Database) GetIdInboundList() ([]*types.InboundIdList, error) {
 	conn := d.Conn
 
-	rows, err := conn.Query("SELECT id,rule FROM inbound_id WHERE coin=?",d.Config.Coin)
+	rows, err := conn.Query("SELECT id,rule,`desc` FROM inbound_id WHERE coin=?",d.Config.Coin)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1630,9 +1669,9 @@ func (d *Database) GetIdInboundList() ([]*types.InboundIdList, error) {
 
 	for rows.Next() {
 		var (
-			id,rule string
+			id,rule,desc string
 		)
-		err := rows.Scan(&id, &rule)
+		err := rows.Scan(&id, &rule, &desc)
 		if err != nil {
 			log.Printf("mysql GetIdInboundList:rows.Scan() error: %v", err)
 			return nil, err
@@ -1644,11 +1683,83 @@ func (d *Database) GetIdInboundList() ([]*types.InboundIdList, error) {
 		result = append(result, &types.InboundIdList{
 			Id:      id,
 			Allowed: allowed,
+			Desc: desc,
 		})
 	}
 
 	return result, nil
 }
+
+func (d *Database) SaveIdInbound(id,rule string) bool {
+	conn := d.Conn
+
+	ret,err := conn.Exec("INSERT INTO inbound_id(coin,id,rule) VALUES (?,?,?)", d.Config.Coin, id, rule)
+	if err != nil {
+		log.Printf("mysql SaveIpInbound:Exec() error: %v", err)
+		return false
+	}
+
+	if ok,_ := ret.RowsAffected(); ok <= 0  {
+		return false
+	}
+
+	return true
+}
+
+func (d *Database) DelIdInbound(id string) bool {
+	conn := d.Conn
+
+	_,err := conn.Exec("DELETE FROM inbound_id WHERE coin=? AND id=?", d.Config.Coin, id)
+	if err != nil {
+		log.Printf("mysql DelIpInbound:Exec() error: %v", err)
+		return false
+	}
+
+	return true
+}
+
+
+func (d *Database) GetLikeMinerSubList(addr string) ([]*types.DevSubList, error) {
+	conn := d.Conn
+
+	var (
+		result []*types.DevSubList
+	)
+
+	rows, err := conn.Query("SELECT login_addr,sub_addr,weight FROM miner_sub WHERE coin=? AND login_addr like ?", d.Config.Coin, "%" + addr + "%")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			devAddr, subAddr string
+			weight  int64
+		)
+
+		err := rows.Scan(&devAddr, &subAddr, &weight)
+		if err != nil {
+			log.Printf("mysql ChoiceSubMiner:rows.Scan() error: %v", err)
+			return nil, err
+		}
+
+		if weight <= 0 { weight = 1 }
+
+		if result == nil {
+			result = make([]*types.DevSubList,0)
+		}
+
+		result = append(result, &types.DevSubList{
+			DevAddr: devAddr,
+			SubAddr: subAddr,
+			Amount:  weight,
+		})
+	}
+
+	return result, err
+}
+
 
 func (d *Database) GetBanWhitelist() (mapset.Set, error) {
 	conn := d.Conn
@@ -1681,9 +1792,21 @@ func (d *Database) GetBanWhitelist() (mapset.Set, error) {
 func (d *Database) UpdatePayoutLimit(login string,dgcValue string) bool {
 	conn := d.Conn
 	//The location (d.Config.Coin) does not need to be set.
-	ret,err := conn.Exec("UPDATE miner_info SET payout_limit=? WHERE login_addr=?", dgcValue, login)
+	_,err := conn.Exec("UPDATE miner_info SET payout_limit=? WHERE login_addr=?", dgcValue, login)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	return true
+}
+
+func (d *Database) CreateAccount(user string,pass []byte) bool {
+	conn := d.Conn
+	//The location (d.Config.Coin) does not need to be set.
+	ret,err := conn.Exec("INSERT INTO account(id,password) VALUES (?,?)", user, pass)
+	if err != nil {
+		log.Printf("mysql CreateAccount:Exec() error: %v", err)
+		return false
 	}
 
 	if ok,_ := ret.RowsAffected(); ok <= 0  {
@@ -1691,4 +1814,29 @@ func (d *Database) UpdatePayoutLimit(login string,dgcValue string) bool {
 	}
 
 	return true
+}
+
+
+func (d *Database) GetAccountPassword(id string) (string, string, error) {
+	conn := d.Conn
+	rows, err := conn.Query("SELECT password,access FROM account WHERE id=?", id)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			password, access string
+		)
+		err := rows.Scan(&password, &access)
+		if err != nil {
+			log.Printf("mysql GetAccountPassword:rows.Scan() error: %v", err)
+			return "", "", err
+		}
+
+		return password, access, nil
+	}
+
+	return "", "", nil
 }

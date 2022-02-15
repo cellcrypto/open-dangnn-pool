@@ -61,6 +61,7 @@ type Worker struct {
 	WorkerDiff     int64  `json:"difficulty"`
 	WorkerHostname string `json:"hostname"`
 	Size  			int64 `json:"size"`
+	RoundShare		float32 `json:"rshare"`
 	Reported		int64 `json:"reported"`
 }
 
@@ -490,7 +491,7 @@ func (r *RedisClient) LockPayouts(login string, amount int64) error {
 	key := r.formatKey("payments", "lock")
 	result := r.client.SetNX(key, util.Join(login, amount), 0).Val()
 	if !result {
-		return fmt.Errorf("Unable to acquire lock '%s'", key)
+		return fmt.Errorf("unable to acquire lock '%s'", key)
 	}
 	return nil
 }
@@ -958,8 +959,8 @@ func (r *RedisClient) CollectWorkersStats(sWindow, lWindow time.Duration, login 
 			online++
 		}
 
-		currentHashrate += worker.HR
-		totalHashrate += worker.TotalHR
+		currentHashrate += worker.HR * worker.Size
+		totalHashrate += worker.TotalHR * worker.Size
 		if mapReportRate != nil {
 			if reported , ok := mapReportRate[id]; ok {
 				worker.Reported = reported
@@ -1215,10 +1216,12 @@ func convertWorkersStats(window int64, raw *redis.ZSliceCmd, divFlag bool) map[s
 		if divFlag == true  {
 			worker.TotalHR += share / worker.Size
 			worker.WorkerDiff = share / worker.Size
+			worker.RoundShare += 1/float32( worker.Size)
 		} else {
 			worker.TotalHR += share
 			// Addition from Mohannad Otaibi to report Difficulty
 			worker.WorkerDiff = share
+			worker.RoundShare += 1
 		}
 
 		worker.WorkerHostname = hostname
@@ -1430,3 +1433,26 @@ func (r *RedisClient) SetReportedtHashrates(logins map[string]string, WorkerId s
 	return nil
 }
 
+func (r *RedisClient) SetToken(devId string, jwtSign string, expirationMin int64) error {
+	key := "acc:" + devId
+	result := r.client.Set(key, jwtSign, time.Minute * time.Duration(expirationMin))
+	if result.Err() == redis.Nil {
+		return nil
+	} else if result.Err() != nil {
+		return result.Err()
+	}
+	return nil
+}
+
+
+func (r *RedisClient) GetToken(devId string) (string, error) {
+	key := "acc:" + devId
+	result := r.client.Get(key)
+	if result.Err() == redis.Nil {
+		return "", nil
+	} else if result.Err() != nil {
+		return "", result.Err()
+	}
+	resultVal, _ := result.Result()
+	return resultVal, nil
+}

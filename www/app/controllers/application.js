@@ -2,8 +2,25 @@ import Ember from 'ember';
 import config from '../config/environment';
 
 export default Ember.Controller.extend({
+  auth: Ember.inject.service('auth'),
+
   get config() {
     return config.APP;
+  },
+
+  init() {
+    this._super(...arguments);
+    this.set('loggedIn', this.get('auth').isLoggedIn());
+  },
+
+  actions: {
+    // login() {
+    //     this.get('auth').login();
+    // },
+    logout() {
+        this.get('auth').logout();
+        this.set('loggedIn',null);
+    }
   },
 
   height: Ember.computed('model.nodes', {
@@ -47,14 +64,18 @@ export default Ember.Controller.extend({
   bestNode: Ember.computed('model.nodes', {
     get() {
       var node = null;
-      this.get('model.nodes').forEach(function (n) {
-        if (!node) {
-          node = n;
-        }
-        if (node.height < n.height) {
-          node = n;
-        }
-      });
+      var nodes = this.get('model.nodes');
+      if (nodes) {
+        nodes.forEach(function (n) {
+          if (!node) {
+            node = n;
+          }
+          if (node.height < n.height) {
+            node = n;
+          }
+        });
+      }
+
       return node;
     }
   }),

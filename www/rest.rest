@@ -1,0 +1,72 @@
+
+http://127.0.0.1:8080/test
+
+
+
+### Create account information.
+post http://127.0.0.1:8080/signup HTTP/1.1
+content-type: application/json
+
+{
+  "username":"admin",
+  "password":"admin"
+}
+
+### Generate a minor token for an individual user.
+post http://127.0.0.1:8080/token HTTP/1.1
+content-type: application/json
+
+{
+  "username":"sadfsadf",
+  "password":"sdafasd",
+  "devId": "0xd166c49334542e26e5f855e04093d48f0cfc1160"
+}
+
+### Generate all minor tokens.
+post http://127.0.0.1:8080/token HTTP/1.1
+content-type: application/json
+
+{
+  "username":"sadfsadf",
+  "password":"sdafasd",
+  "devId": "all"
+}
+
+
+### Create a homepage admin token.
+post http://127.0.0.1:8080/signin HTTP/1.1
+content-type: application/json
+
+{
+  "username":"admin",
+  "password":"admin"
+}
+
+
+
+### Set withdrawal limits
+post http://127.0.0.1:8080/user/payout/0xa166c49334542e26e5f855e04093d48f0cfc1160/100000 HTTP/1.1
+content-type: application/json
+
+
+### user info
+post http://127.0.0.1:8080/user/accounts/0xd166c49334542e26e5f855e04093d48f0cfc1160 HTTP/1.1
+content-type: application/json
+
+{
+}
+
+### inbound list.
+get http://127.0.0.1:8080/api/inbounds HTTP/1.1
+    content-type: application/json
+
+    {
+    }
+
+### list of miners
+get http://127.0.0.1:8080/api/miners HTTP/1.1
+    content-type: application/json
+
+    {
+    }
+

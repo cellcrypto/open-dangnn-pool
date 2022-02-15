@@ -148,12 +148,12 @@ export default Ember.Controller.extend({
   }),
   poolBalanceByOnce: Ember.computed({
     get() {
-      return this.get('model.poolBalanceOnce')/1000000000;
+      return this.get('model.poolBalanceOnce')/10000000;
     }
   }),
   earnPerDay: Ember.computed('model', {
     get() {
-      return 3 * 60 * 60 / this.get('config').BlockTime * this.get('poolBalanceByOnce') * this.getWithDefault('model.hashrate') / this.get('model.hashrateTotal');
+      return 24 * 60 * 60 / this.get('config').BlockTime * this.get('poolBalanceByOnce') * this.getWithDefault('model.hashrate') / this.get('model.hashrateTotal');
       // return 24 * 60 * 60 / this.get('config').BlockTime * this.get('config').BlockReward *
       //   this.getWithDefault('model.hashrate') / this.get('hashrate');
     }

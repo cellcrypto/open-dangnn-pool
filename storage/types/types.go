@@ -55,11 +55,19 @@ type CreditsImmatrue struct {
 type InboundIpList struct {
 	Ip      string
 	Allowed bool // true: allow false: deny
+	Desc	string
 }
 
 type InboundIdList struct {
 	Id      string
 	Allowed bool // true: allow false: deny
+	Desc	string
+}
+
+type DevSubList struct {
+	DevAddr 	string
+	SubAddr 	string
+	Amount		int64
 }
 
 var (

@@ -2,9 +2,18 @@ import Ember from 'ember';
 import config from '../config/environment';
 
 export default Ember.Route.extend({
+  auth: Ember.inject.service('auth'),
   model: function() {
     var url = config.APP.ApiUrl + 'api/miners';
-    return Ember.$.getJSON(url).then(function(data) {
+    return Ember.$.ajax({
+      method: 'get',
+      url: url,
+      crossDomain: true,
+      xhrFields: {
+        withCredentials: true
+      },
+      //headers: {"Ction": "close"},
+    }).then(function(data) {
       if (data.miners) {
         // Convert map to array
         data.miners = Object.keys(data.miners).map((value) => {
@@ -25,6 +34,12 @@ export default Ember.Route.extend({
       }
       return data;
     });
+  },
+
+  beforeModel() {
+    if(!this.get('auth').isLoggedIn()) {
+        this.transitionTo('login');
+    }
   },
 
   setupController: function(controller, model) {

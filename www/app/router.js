@@ -21,6 +21,12 @@ Router.map(function() {
   this.route('payments');
   this.route('miners');
   this.route('about');
+  this.route('login');
+  this.route('setting', function() {
+    this.route('idbound');
+    this.route('ipbound');
+    this.route('account');
+  });
 });
 
 export default Router;

@@ -82,11 +82,11 @@ func (s *ShutdownHook) Listen(signals ...os.Signal) {
 		sig = <-ch
 		fmt.Println("[######] Enter End Signal... ", sig.String())
 		if sig == syscall.SIGINT {
-			timeNow := time.Now().UnixMilli()
-			if timeNow < timeGap + 1000 {
+			timeNow := time.Now().UnixNano()
+			if timeNow < timeGap + (1000 * int64(time.Millisecond)) {
 				break
 			}
-			timeGap = time.Now().UnixMilli()
+			timeGap = time.Now().UnixNano()
 		} else {
 			break
 		}

@@ -15,7 +15,6 @@ export default Ember.Route.extend({
       return false;
     },
     search(devid) {
-      //devid = devid.replace(/\d+$/, function(n){ return ++n });
       if (!Ember.isEmpty(devid)) {
         var result = devid.match(/\b[0-9A-Fa-f]{1,40}\b/g);
         console.log(result,devid);
@@ -56,9 +55,4 @@ export default Ember.Route.extend({
         this.transitionTo('login');
     }
   },
-
-  // setupController: function(controller, model) {
-  //   this._super(controller, model);
-  //   Ember.run.later(this, this.refresh, 5000);
-  // }
 });

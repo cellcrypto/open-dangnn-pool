@@ -1,9 +1,11 @@
 package mysql
 
 import (
+	"fmt"
 	"github.com/cellcrypto/open-dangnn-pool/rpc"
 	"github.com/cellcrypto/open-dangnn-pool/storage/types"
 	"github.com/cellcrypto/open-dangnn-pool/util"
+	"log"
 	"math/big"
 	"os"
 	"strconv"
@@ -34,6 +36,10 @@ func TestCreditsBlocksCheck(t *testing.T)  {
 	Timeout := "10s"
 	rpc := rpc.NewRPCClient("BlockChecker", Daemon, Timeout)
 
+	var (
+		countBlock int64
+		countUncle int64
+	)
 	conn := db.Conn
 	rows, err := conn.Query("SELECT height,hash,reward,`timestamp` FROM credits_blocks")
 	if err != nil {
@@ -74,8 +80,36 @@ func TestCreditsBlocksCheck(t *testing.T)  {
 				//
 				blockHeight, _ := strconv.ParseInt(strings.Replace(block.Number, "0x", "", -1), 16, 64)
 				t.Errorf("not found block index(%v:%v) hash: %v %v", iHeight, blockHeight, block.Hash,hash)
+				countUncle++
 				continue
 			}
+
+			uncleBlock, err := rpc.GetBlockByHash(hash)
+			if err != nil || hash != uncleBlock.Hash {
+				blockHeight, _ := strconv.ParseInt(strings.Replace(block.Number, "0x", "", -1), 16, 64)
+				uncleHeight, _ := strconv.ParseInt(strings.Replace(uncleBlock.Number, "0x", "", -1), 16, 64)
+				t.Errorf("not found uncle block index(%v:%v) hash: %v %v", uncleHeight, blockHeight, uncleBlock.Hash,hash)
+				countUncle++
+				continue
+			}
+
+			if len(uncleBlock.Transactions) > 0 {
+				return
+			}
+
+			uncleHeight, _ := strconv.ParseInt(strings.Replace(uncleBlock.Number, "0x", "", -1), 16, 64)
+			// Basic block creation reward
+			var createReward = types.GetUncleReward(uncleHeight , iHeight)
+
+			dbReward, boo := new(big.Int).SetString(reward, 10)
+			if !boo {
+				return
+			}
+			if createReward.Cmp(dbReward) != 0 {
+				t.Errorf("not matched: %v %v",dbReward,createReward)
+			}
+			fmt.Println("createReward:",createReward,"reward:",reward)
+			countUncle++
 			continue
 		}
 
@@ -114,8 +148,78 @@ func TestCreditsBlocksCheck(t *testing.T)  {
 			t.Errorf("not matched: %v %v",dbReward,createReward)
 		}
 
+		countBlock++
 	}
 
 	return
-
 }
+
+
+func TestPayoutTxCheck(t *testing.T)  {
+
+	Daemon := "http://127.0.0.1:8545"
+	Timeout := "10s"
+	rpc := rpc.NewRPCClient("BlockChecker", Daemon, Timeout)
+
+	var (
+		count int64
+	)
+	conn := db.Conn
+	rows, err := conn.Query("SELECT tx_hash,amount FROM payments_all")
+	if err != nil {
+		t.Error("select error")
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			txHash,reword string
+		)
+
+		err := rows.Scan(&txHash, &reword)
+		if err != nil {
+			t.Errorf("Mysql rows.Scan() error: %v", err)
+			return
+		}
+
+		txReceipt, err := rpc.GetTxReceipt(txHash)
+		if err != nil {
+			t.Errorf("no have transaction receipt tx:%v err: %v", txHash, err)
+			return
+		}
+
+		if txReceipt == nil {
+			t.Errorf("not have transaction receipt tx:%v err: %v", txHash, err)
+			return
+		}
+
+		if txReceipt.Confirmed() {
+			if txReceipt.Successful() {
+				log.Printf("Payout tx successful for %s", txReceipt.TxHash)
+
+			} else {
+				t.Errorf("Payout tx failed for tx:%v err: %v", txHash, err)
+				return
+			}
+		} else {
+			t.Errorf("Payout tx failed for tx:%v err: %v", txHash, err)
+			return
+		}
+
+		// Let's see if it's an Uncle Block.
+		blockNumber, _ := strconv.ParseInt(strings.Replace(txReceipt.BlockNumber, "0x", "", -1), 16, 64)
+		block, err := rpc.GetBlockByHeight(blockNumber)
+		if block.Hash != txReceipt.BlockHash {
+			t.Errorf("Block hash is different It can be an uncle block (num:%v) (%v,%v) err: %v", blockNumber, block.Hash, txReceipt.BlockHash, err)
+			return
+		}
+
+		count++
+	}
+
+	log.Printf("Payout tx total success:%v", count)
+	return
+}
+
+

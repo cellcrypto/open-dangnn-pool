@@ -179,7 +179,6 @@ func (u *PayoutsProcessor) process() {
 					if receipt != nil && receipt.Confirmed() {
 						if receipt.Successful() {
 							log.Printf("Payout tx successful for %s: %s", receiptData.login, receiptData.txHash)
-
 						} else {
 							//log.Printf("Payout tx failed for %s: %s. Address contract throws on incoming tx.", login, txHash)
 							plogger.InsertSystemPaymemtError(plogger.LogTypePaymentWork, receiptData.login, "",

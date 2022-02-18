@@ -14,7 +14,6 @@ export default Ember.Route.extend({
       xhrFields: {
         withCredentials: true
       },
-      //headers: {"Ction": "close"},
     }).then(function(data) {
 			if (data.payments) {
 				data.payments = data.payments.map(function(p) {

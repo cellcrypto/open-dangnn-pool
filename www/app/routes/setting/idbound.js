@@ -31,9 +31,4 @@ export default Ember.Route.extend({
         this.transitionTo('login');
     }
   },
-
-  // setupController: function(controller, model) {
-  //   this._super(controller, model);
-  //   Ember.run.later(this, this.refresh, 5000);
-  // }
 });

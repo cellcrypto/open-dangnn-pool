@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"syscall"
+	"time"
 )
 
 type ShutdownHook struct {
@@ -69,10 +71,28 @@ func (s *ShutdownHook) Hooks() map[string]func(os.Signal) {
 
 func (s *ShutdownHook) Listen(signals ...os.Signal) {
 	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, signals...)
-	sig := <-ch
 
-	fmt.Println("[######] shutdown process start...")
+	var (
+		sig os.Signal
+		timeGap int64
+	)
+
+	for {
+		signal.Notify(ch, signals...)
+		sig = <-ch
+		fmt.Println("[######] Enter End Signal... ", sig.String())
+		if sig == syscall.SIGINT {
+			timeNow := time.Now().UnixMilli()
+			if timeNow < timeGap + 1000 {
+				break
+			}
+			timeGap = time.Now().UnixMilli()
+		} else {
+			break
+		}
+	}
+
+	fmt.Println("[######] shutdown process start... ", sig.String())
 
 	// SUB HOOK PROCESS
 	var wg sync.WaitGroup

@@ -4,10 +4,6 @@ import config from '../../config/environment';
 export default Ember.Route.extend({
   auth: Ember.inject.service('auth'),
 
-  // refresh: function() {
-  //   Ember.run.later(this, this.refresh, 10);
-  // },
-
   actions: {
     error: function(reason, transition) {
       this.transitionTo('/login');
@@ -76,9 +72,4 @@ export default Ember.Route.extend({
         this.transitionTo('login');
     }
   },
-
-  // setupController: function(controller, model) {
-  //   this._super(controller, model);
-  //   Ember.run.later(this, this.refresh, 5000);
-  // }
 });

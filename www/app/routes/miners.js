@@ -12,7 +12,6 @@ export default Ember.Route.extend({
       xhrFields: {
         withCredentials: true
       },
-      //headers: {"Ction": "close"},
     }).then(function(data) {
       if (data.miners) {
         // Convert map to array

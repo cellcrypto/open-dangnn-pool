@@ -7,14 +7,13 @@
     <div class="modal-dialog">
       <div class="modal-content">
         <div class="modal-header">
-          
+
           <h5 class="modal-title" id="addModal">Ip Input</h5>
           <ul class="errors">
             {{#each errors as |error|}}
               <li>{{error.message}}</li>
             {{/each}}
           </ul>
-          {{!-- <button type="button" class="btn-close" data-dismiss="modal" aria-label="Close"></button> --}}
         </div>
         <div class="modal-body">
           <div class="input-group">
@@ -27,10 +26,6 @@
                 <option value={{option}}>{{option}}</option>
               {{/each}}
             </select>
-            {{!-- <select class="dropdown" id="sel1">
-              <option>Allow</option>
-              <option>deny</option>
-            </select> --}}
           </div>
         </div>
         <div class="modal-footer">

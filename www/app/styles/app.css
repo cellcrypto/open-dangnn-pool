@@ -117,7 +117,7 @@ span.logo-1 {
 
 span.logo-2 {
 	font-weight: 300;
-	color: rgb(238, 170, 255);
+  color: #eeaaff;
 }
 
 span.logo-3 {
@@ -177,13 +177,11 @@ h4.note {
 	font-weight: bold;
 }
 
-#login-form {margin:5em auto 2em auto; padding:20px; width:340px; border:1px solid #FDBF3B; background-color:#FFEBC1; border-radius:4px; box-sizing: border-box;}
+#login-form {margin:5em auto 2em auto; padding:20px; width:340px; border:1px solid #bbaaff; background-color:#eeaaff; border-radius:10px; box-sizing: border-box;}
 #login-form label {display:block; margin-bottom:5px; font-weight:bold;}
 #login-form label[for=autologin] {font-weight:normal;}
 #login-form input {height: 29px;}
 #login-form input[type=text], #login-form input[type=password], #login-form input[type=submit] {display: block; width: 100%;}
 #login-form input[type=text], #login-form input[type=password] {margin-bottom: 15px;}
-#login-form a.lost_password {float:right; font-weight:normal;}
-#login-form input#openid_url {background:#fff url(../images/openid-bg.gif) no-repeat 4px 50%; padding-left:24px !important;}
 #login-form h3 {text-align: center;}
 

@@ -32,42 +32,6 @@ export default Ember.Route.extend({
     var token = this.get('auth').getIdToken();
     var url = config.APP.ApiUrl + 'api/stats';
 
-
-    // return Ember.$.getJSON(url).then(() => {
-    //   return Ember.Object.create(data);
-    // }, (err) => {
-    //   if (err.status == 401) {
-    //     this.get('auth').clearIdToken();
-    //     this.transitionTo('/login');
-    //     alert('login id and password');
-    //   }
-    //   else alert('err: ' + err.responseText);
-    // });
-
-    // return this.get('ajax').request(url,{
-    //   method: "GET",
-    //   beforeSend: function (request)
-    //         {
-    //             request.setRequestHeader("Authority", "authorizationToken");
-    //         },
-    //   url: url,
-    //   dataType: 'application/json',
-    //   processData: false,
-    //   data: JSON.stringify({foo: 'bar'})
-    //   //headers: {"X-Test-Header": "test-value"}
-    //   // headers: JSON.stringify({'access-token': token }),
-    // }).then(() => {
-    //   return Ember.Object.create(data);
-    // }, (err) => {
-    //   if (err.status == 401) {
-    //     this.get('auth').clearIdToken();
-    //     this.transitionTo('/login');
-    //     alert('login id and password');
-    //   }
-    //   else alert('err: ' + err.responseText);
-    // });
-    //Ember.$.cookie('access-token', token);
-
     return Ember.$.ajax({
       method: 'get',
       url: url,

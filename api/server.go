@@ -230,11 +230,6 @@ func (s *ApiServer) authenticationMiddleware (next http.Handler) http.Handler {
 func (s *ApiServer) CheckJwtToken(r *http.Request, requestURI string) (bool,string) {
 	idToken := r.Header.Get("API_KEY")
 	if idToken == "" {
-		cookies:= r.Cookies()
-		for _, c := range cookies {
-			fmt.Println("cookie: ", c)
-		}
-
 		cookie, _ := r.Cookie("access-token")
 		if cookie == nil || len(cookie.Value) <= 0 {
 			return false, "unauthorized: non cookie"
@@ -740,17 +735,17 @@ func (s *ApiServer) SignInIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 권한 체크
+	// permission check
 
 
-	// 토큰 발급
+	// Token Issuance
 	token, _ := s.CreateUserToken(user.Username, access, basicTokenExpiration)
 
 	tokenSplit := strings.Split(token,".")
 	if len(tokenSplit) != 3 {
 		return
 	}
-	// 레디스에 devid로 토큰을 등록 한다.
+	// Register token as devid in Redis.
 	s.backend.SetToken(util.Join(s.config.Coin, user.Username), tokenSplit[2],basicTokenExpiration)
 
 

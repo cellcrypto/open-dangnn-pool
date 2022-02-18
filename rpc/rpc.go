@@ -52,6 +52,7 @@ type TxReceipt struct {
 	TxHash    string `json:"transactionHash"`
 	GasUsed   string `json:"gasUsed"`
 	BlockHash string `json:"blockHash"`
+	BlockNumber string `json:"blockNumber"`
 	Status    string `json:"status"`
 }
 

@@ -87,6 +87,8 @@ func (s *ShutdownHook) Listen(signals ...os.Signal) {
 				break
 			}
 			timeGap = time.Now().UnixNano()
+		} else if sig.String() == "window changed" {	// fixed bug ssh client
+
 		} else {
 			break
 		}

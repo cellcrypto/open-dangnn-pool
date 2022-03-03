@@ -436,6 +436,7 @@ func (r *RedisClient) GetRoundShares(height int64, nonce string) (map[string]int
 	sharesMap, _ := cmd.Result()
 	for login, v := range sharesMap {
 		n, _ := strconv.ParseInt(v, 10, 64)
+		login = strings.ToLower(login)	// bug fix
 		result[login] = n
 	}
 	return result, nil

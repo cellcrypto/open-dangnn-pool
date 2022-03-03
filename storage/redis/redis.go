@@ -1434,7 +1434,8 @@ func (r *RedisClient) SetReportedtHashrates(logins map[string]string, WorkerId s
 }
 
 func (r *RedisClient) SetToken(devId string, jwtSign string, expirationMin int64) error {
-	key := "acc:" + devId
+	lowerDevId := strings.ToLower(devId)
+	key := "acc:" + lowerDevId
 	result := r.client.Set(key, jwtSign, time.Minute * time.Duration(expirationMin))
 	if result.Err() == redis.Nil {
 		return nil

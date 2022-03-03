@@ -259,7 +259,8 @@ func (s *ApiServer) CheckJwtToken(r *http.Request, requestURI string) (bool,stri
 
 		login = strings.ToLower(mux.Vars(r)["login"])
 		if devId.(string) != "all" {
-			if login != devId.(string) {
+			lowerDevId:= strings.ToLower(devId.(string))	// case-insensitive
+			if login != lowerDevId {
 				return false, "unauthorized: diff argument"
 			}
 		} else {
@@ -331,6 +332,7 @@ func (s *ApiServer) listen() {
 	r.HandleFunc("/user/payout/{login:0x[0-9a-fA-F]{40}}/{value:[0-9]+}", s.PayoutLimitIndex)
 	r.HandleFunc("/signin", s.SignInIndex)
 	r.HandleFunc("/signup", s.SignupIndex)
+	r.HandleFunc("/api/reglist", s.GetAccountListIndex)
 	r.HandleFunc("/token", s.GetTokenIndex).Methods("POST")
 	r.HandleFunc("/api/inbounds", s.InboundListIndex)
 	r.HandleFunc("/api/saveinbound", s.SaveInboundIndex)
@@ -1154,11 +1156,11 @@ func (s *ApiServer) SaveSubIdIndex(w http.ResponseWriter, r *http.Request) {
 			addCount += count
 		}
 	}
-	amount, _ := strconv.ParseInt(devSubList.Amount,16,64)
+	amount, _ := strconv.ParseInt(devSubList.Amount,10,64)
 	addCount += amount
 	devTotalCount += amount
 	if devTotalCount > 18 {
-		log.Printf("Exceeding max dev count")
+		log.Printf("Exceeding max dev count: %v",devTotalCount)
 		s.ErrorWrite(w, "Exceeding max dev count")
 		return
 	}
@@ -1279,6 +1281,43 @@ func (s *ApiServer) SignupIndex(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+
+func (s *ApiServer) GetAccountListIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	log.Println("Sign up")
+	var user User
+
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+		log.Printf("failed to Decode: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	hashedPassword, err := util.HashPassword(user.Password)
+	if err != nil {
+		log.Printf("failed to GenerateFromPassword: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+
+	if !s.db.CreateAccount(user.Username, hashedPassword) {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Printf("Failed to UpdatePayoutLimit()")
+		return
+	}
+
+	reply := make(map[string]interface{})
+	reply["msg"] = "success"
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(reply)
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
 
 
 //

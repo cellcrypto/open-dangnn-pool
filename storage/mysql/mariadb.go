@@ -1328,7 +1328,7 @@ func (d *Database) convertStringMap(result map[string]interface{},key string,val
 
 func (d *Database) GetMinerCharts(hashNum int64, chartIntv int64, login string, ts int64) (stats []*types.MinerCharts, err error) {
 	conn := d.Conn
-	rows, err := conn.Query("SELECT `time`,time2,hash,large_hash,report_hash,share,work_online FROM miner_charts WHERE login_addr=? AND `time` > ? ORDER BY time desc LIMIT ? ", login, ts - 172800, hashNum)
+	rows, err := conn.Query("SELECT `time`,time2,hash,large_hash,report_hash,share,work_online FROM miner_charts WHERE coin=? AND login_addr=? AND `time` > ? ORDER BY time desc LIMIT ? ", d.Config.Coin, login, ts - 172800, hashNum)
 	if err != nil {
 		log.Fatal(err)
 	}

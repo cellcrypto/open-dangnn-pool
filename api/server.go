@@ -1132,8 +1132,12 @@ func (s *ApiServer) SaveSubIdIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	lowerDevId := strings.ToLower(devSubList.DevId)
+	lowerSubId := strings.ToLower(devSubList.SubId)
+
+
 	// Get the quantity and set the max value
-	devList, err := s.db.GetMinerSubList(devSubList.DevId)
+	devList, err := s.db.GetMinerSubList(lowerDevId)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Printf("Failed to UpdatePayoutLimit()")
@@ -1152,7 +1156,7 @@ func (s *ApiServer) SaveSubIdIndex(w http.ResponseWriter, r *http.Request) {
 		}
 
 		devTotalCount += count
-		if devSubList.DevId == dev.DevAddr && devSubList.SubId == dev.SubAddr {
+		if lowerDevId == dev.DevAddr && lowerSubId == dev.SubAddr {
 			addCount += count
 		}
 	}
@@ -1165,10 +1169,10 @@ func (s *ApiServer) SaveSubIdIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	saveFlag := s.db.SaveSubIdIndex(devSubList.DevId, devSubList.SubId, addCount)
+	saveFlag := s.db.SaveSubIdIndex(lowerDevId, lowerSubId, addCount)
 	if saveFlag && devSubList.allowId {
 		// Allow ID
-		s.db.SaveIdInbound(devSubList.DevId,"allow")
+		s.db.SaveIdInbound(lowerDevId,"allow")
 	}
 
 	reply := make(map[string]interface{})

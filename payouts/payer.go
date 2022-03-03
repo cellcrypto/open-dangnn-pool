@@ -242,7 +242,9 @@ func (u *PayoutsProcessor) process() {
 		// excluding gas fee
 		gasFee := u.config.GasFeeInShannon()
 		totalamount := amount
-		amount -= gasFee
+		if !u.config.AutoGas {
+			amount -= gasFee
+		}
 		amountInShannon = big.NewInt(amount)
 
 		if amount <= 0 {
@@ -254,7 +256,7 @@ func (u *PayoutsProcessor) process() {
 		log.Printf("Locked payment for %s, %v Shannon gas fee: %v Shannon", login, totalamount,gasFee)
 		// Lock payments for current payout
 		// Debit miner's balance and update stats
-		ret, err := u.db.UpdateBalance(login, amount, coin)
+		ret, err := u.db.UpdateBalance(login, amount, gasFee, coin)
 		if err != nil {
 			//log.Printf("Error: %v Already Locked payment for %s, %v Shannon", err, login, amount)
 			plogger.InsertSystemPaymemtError(plogger.LogTypePaymentWork, login, "",
@@ -294,7 +296,7 @@ func (u *PayoutsProcessor) process() {
 		}
 
 		// Log transaction hash
-		err = u.db.WritePayment(login, txHash, amount, coin, u.config.Address)
+		err = u.db.WritePayment(login, txHash, amount, gasFee, coin, u.config.Address)
 		// err = u.backend.WritePayment(login, txHash, amount)
 		if err != nil {
 			//log.Printf("Failed to log payment data for %s, %v Shannon, tx: %s: %v", login, amount, txHash, err)

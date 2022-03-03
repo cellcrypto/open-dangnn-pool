@@ -556,7 +556,7 @@ func (d *Database) writeOrphans(block *types.BlockData) error {
 func (d *Database) selectCreditsImmature(roundHeight int64, hash string) ([]*types.CreditsImmatrue,error) {
 	conn := d.Conn
 
-	rows, err := conn.Query("SELECT login_addr,amount FROM credits_immature WHERE round_height=? AND hash=?",roundHeight,hash)
+	rows, err := conn.Query("SELECT login_addr,amount FROM credits_immature WHERE round_height=? AND hash=? AND coin=?",roundHeight,hash, d.Config.Coin)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -838,7 +838,7 @@ func (d *Database) CollectStats(maxBlocks int64) ([]*types.BlockData, []*types.B
 		}
 	}
 
-	rows2, err := conn.Query("SELECT state,round_height,height,uncle_height,orphan,nonce,hash,`timestamp`,round_diff,total_share,reward FROM blocks WHERE state=? ORDER BY height DESC LIMIT ?", constMatureBlock, maxBlocks)
+	rows2, err := conn.Query("SELECT state,round_height,height,uncle_height,orphan,nonce,hash,`timestamp`,round_diff,total_share,reward FROM blocks WHERE coin=? AND state=? ORDER BY height DESC LIMIT ?", d.Config.Coin, constMatureBlock, maxBlocks)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -865,7 +865,7 @@ func (d *Database) CollectStats(maxBlocks int64) ([]*types.BlockData, []*types.B
 		resultMatured = append(resultMatured, &block)
 	}
 
-	rows3, err := conn.Query("SELECT count(*) FROM blocks WHERE state=?", constMatureBlock)
+	rows3, err := conn.Query("SELECT count(*) FROM blocks WHERE coin=? AND state=?", d.Config.Coin, constMatureBlock)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -966,7 +966,7 @@ func (d *Database) convertBlockResults(state int, height int64, roundHeight int6
 
 func (d *Database) GetPayees(max string) ([]*Payees, error) {
 	conn := d.Conn
-	rows, err := conn.Query("SELECT coin,login_addr, balance, payout_limit FROM miner_info WHERE ((payout_limit = 0 AND balance > ?) or (payout_limit > 0 AND balance > payout_limit) )AND coin=?", max, d.Config.Coin)
+	rows, err := conn.Query("SELECT coin,login_addr, balance, payout_limit FROM miner_info WHERE ((payout_limit = 0 AND balance > ?) or (payout_limit > 0 AND balance > payout_limit) ) AND coin=? AND payout_lock = 0", max, d.Config.Coin)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -999,7 +999,7 @@ func (d *Database) GetPayees(max string) ([]*Payees, error) {
 }
 
 // UpdateBalance Confirm the reward coin with the miner's wallet address.
-func (d *Database) UpdateBalance(login string, amount int64, coin string) (int, error) {
+func (d *Database) UpdateBalance(login string, amount int64, gasFee int64, coin string) (int, error) {
 	conn := d.Conn
 
 	ts := util.MakeTimestamp()
@@ -1011,7 +1011,7 @@ func (d *Database) UpdateBalance(login string, amount int64, coin string) (int, 
 	defer tx.Rollback()
 	ret, err := tx.Exec(
 		"UPDATE miner_info SET payout_lock=?,balance=balance-?,pending=pending+? WHERE coin=? AND login_addr=? AND payout_lock = 0",
-		ts, amount, amount, coin, login)
+		ts, amount + gasFee, amount, coin, login)	// gasFee is also removed.
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1025,13 +1025,11 @@ func (d *Database) UpdateBalance(login string, amount int64, coin string) (int, 
 	}
 
 	_, err = tx.Exec(
-		"UPDATE finances SET balance=balance-?,pending=pending+? WHERE coin=?",
-		amount, amount, coin)
+		"UPDATE finances SET balance=balance-?,pending=pending+?,gas_fee=gas_fee+? WHERE coin=?",
+		amount + gasFee, amount, gasFee, coin)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-
 
 	err = tx.Commit()
 	if err != nil {
@@ -1041,7 +1039,7 @@ func (d *Database) UpdateBalance(login string, amount int64, coin string) (int, 
 	return 0, nil
 }
 
-func (d *Database) WritePayment(login, txHash string, amount int64, coin string, from string) error {
+func (d *Database) WritePayment(login, txHash string, amount int64,gasFee int64, coin string, from string) error {
 	conn := d.Conn
 
 	tx, err := conn.Begin()
@@ -1139,7 +1137,7 @@ func (d *Database) CheckTimeMinerCharts(miner *MinerChartSelect, ts int64, miner
 
 func (d *Database) WriteMinerCharts(time1 int64, time2, k string, hash, largeHash, workerOnline int64, share int64, report int64) error {
 	conn := d.Conn
-	_, err := conn.Exec("INSERT INTO miner_charts(login_addr,time,time2,hash,large_hash,report_hash,share,work_online) VALUE (?,?,?,?,?,?,?,?)",k, time1, time2,hash, largeHash, report, share, workerOnline)
+	_, err := conn.Exec("INSERT INTO miner_charts(login_addr,time,time2,hash,large_hash,report_hash,share,work_online,coin) VALUE (?,?,?,?,?,?,?,?,?)",k, time1, time2,hash, largeHash, report, share, workerOnline, d.Config.Coin)
 	if err != nil {
 		return err
 	}
@@ -1209,7 +1207,7 @@ func (d *Database) getMinerInfo(login string) (map[string]interface{}, int64, er
 
 func (d *Database) getMinerPayments(login string, maxPayments int64) ([]map[string]interface{}, error) {
 	conn := d.Conn
-	rows, err := conn.Query("SELECT tx_hash, amount, insert_time FROM payments_all WHERE login_addr=? ORDER BY seq DESC LIMIT ? ", login, maxPayments)
+	rows, err := conn.Query("SELECT tx_hash, amount, insert_time FROM payments_all WHERE coin=? AND login_addr=? ORDER BY seq DESC LIMIT ? ", d.Config.Coin, login, maxPayments)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1247,7 +1245,7 @@ func (d *Database) getMinerPayments(login string, maxPayments int64) ([]map[stri
 
 func (d *Database) GetAllPayments(maxPayments int64) ([]map[string]interface{}, int64, error) {
 	conn := d.Conn
-	rows, err := conn.Query("SELECT login_addr,tx_hash,amount,insert_time FROM payments_all ORDER BY seq DESC LIMIT ? ", maxPayments)
+	rows, err := conn.Query("SELECT login_addr,tx_hash,amount,insert_time FROM payments_all WHERE coin=? ORDER BY seq DESC LIMIT ? ", d.Config.Coin, maxPayments)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1281,7 +1279,7 @@ func (d *Database) GetAllPayments(maxPayments int64) ([]map[string]interface{}, 
 		result = append(result, tx)
 	}
 
-	rows2, err := conn.Query("SELECT payout_cnt FROM finances ")
+	rows2, err := conn.Query("SELECT payout_cnt FROM finances WHERE coin=?", d.Config.Coin)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1302,7 +1300,7 @@ func (d *Database) GetAllPayments(maxPayments int64) ([]map[string]interface{}, 
 
 func (d *Database) getMinerPaymentCount(login string) (int64, error) {
 	conn := d.Conn
-	rows, err := conn.Query("SELECT count(*) FROM payments_all WHERE login_addr=? ", login)
+	rows, err := conn.Query("SELECT count(*) FROM payments_all WHERE coin=? AND login_addr=? ", d.Config.Coin, login)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1383,7 +1381,7 @@ func (d *Database) GetMinerCharts(hashNum int64, chartIntv int64, login string, 
 func (d *Database) GetChartRewardList(login string, maxList int) ([]*types.RewardData, error) {
 	conn := d.Conn
 
-	rows, err := conn.Query("SELECT `timestamp`,amount,percent,hash,height FROM credits_immature WHERE login_addr=? ORDER BY timestamp desc LIMIT ? ", login, maxList)
+	rows, err := conn.Query("SELECT `timestamp`,amount,percent,hash,height FROM credits_immature WHERE coin=? AND login_addr=? ORDER BY timestamp desc LIMIT ? ", d.Config.Coin, login, maxList)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1417,7 +1415,7 @@ func (d *Database) GetChartRewardList(login string, maxList int) ([]*types.Rewar
 		})
 	}
 
-	rows2, err := conn.Query("SELECT `timestamp`,amount,percent,hash,height FROM credits_balance WHERE login_addr=? ORDER BY timestamp desc LIMIT ? ", login, maxList)
+	rows2, err := conn.Query("SELECT `timestamp`,amount,percent,hash,height FROM credits_balance WHERE coin=? AND login_addr=? ORDER BY timestamp desc LIMIT ? ", d.Config.Coin, login, maxList)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1759,6 +1757,77 @@ func (d *Database) GetLikeMinerSubList(addr string) ([]*types.DevSubList, error)
 	}
 
 	return result, err
+}
+
+
+func (d *Database) GetMinerSubList(devId string) ([]*types.DevSubList, error) {
+	conn := d.Conn
+
+	var (
+		result []*types.DevSubList
+	)
+
+	rows, err := conn.Query("SELECT login_addr,sub_addr,weight FROM miner_sub WHERE coin=? AND login_addr=?", d.Config.Coin, devId)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			devAddr, subAddr string
+			weight  int64
+		)
+
+		err := rows.Scan(&devAddr, &subAddr, &weight)
+		if err != nil {
+			log.Printf("mysql GetMinerSubList:rows.Scan() error: %v", err)
+			return nil, err
+		}
+
+		if weight <= 0 { weight = 1 }
+
+		if result == nil {
+			result = make([]*types.DevSubList,0)
+		}
+
+		result = append(result, &types.DevSubList{
+			DevAddr: devAddr,
+			SubAddr: subAddr,
+			Amount:  weight,
+		})
+	}
+
+	return result, err
+}
+
+func (d *Database) SaveSubIdIndex(devId, subId string, amount int64) bool {
+	conn := d.Conn
+
+	ret,err := conn.Exec("INSERT INTO miner_sub(coin,login_addr,sub_addr,weight) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE weight=VALUES(weight)", d.Config.Coin, devId, subId, amount)
+	if err != nil {
+		log.Printf("mysql SaveSubIdIndex:Exec() error: %v", err)
+		return false
+	}
+
+	if ok,_ := ret.RowsAffected(); ok <= 0  {
+		return false
+	}
+
+	return true
+}
+
+
+func (d *Database) DelSubIdIndex(devId, subId string) bool {
+	conn := d.Conn
+
+	_,err := conn.Exec("DELETE FROM miner_sub WHERE coin=? AND login_addr=? AND sub_addr=?", d.Config.Coin, devId, subId)
+	if err != nil {
+		log.Printf("mysql DelIpInbound:Exec() error: %v", err)
+		return false
+	}
+
+	return true
 }
 
 

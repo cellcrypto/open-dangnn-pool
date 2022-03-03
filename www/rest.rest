@@ -58,15 +58,25 @@ content-type: application/json
 
 ### inbound list.
 get http://127.0.0.1:8080/api/inbounds HTTP/1.1
-    content-type: application/json
+content-type: application/json
 
-    {
-    }
+{
+}
 
 ### list of miners
 get http://127.0.0.1:8080/api/miners HTTP/1.1
-    content-type: application/json
+content-type: application/json
 
-    {
-    }
+{
+}
 
+
+
+###
+post http://127.0.0.1:8080/signin  HTTP/1.1
+content-type: application/json
+
+{
+  "username":"admin",
+  "password":"admin"
+}

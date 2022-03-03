@@ -26,6 +26,18 @@ func IsValidHexAddress(s string) bool {
 	return true
 }
 
+func CheckValidHexAddress(s string) (string, bool) {
+	if strings.HasPrefix(s,"0x") == false {
+		s = "0x" + s
+	}
+
+	if IsValidHexAddress(s) {
+		return s, true
+	}
+	return s, false
+}
+
+
 func IsZeroHash(s string) bool {
 	return zeroHash.MatchString(s)
 }

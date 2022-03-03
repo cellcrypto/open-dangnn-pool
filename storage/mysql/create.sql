@@ -55,40 +55,40 @@ CREATE TABLE `credits_blocks` (
 COLLATE='utf8mb3_general_ci'
 ENGINE=InnoDB;
 
-
 CREATE TABLE `credits_immature` (
-    `coin` VARCHAR(20) NULL DEFAULT NULL COLLATE 'utf8mb3_general_ci',
+    `coin` VARCHAR(20) NULL DEFAULT NULL COLLATE 'utf8_general_ci',
     `round_height` BIGINT(20) NOT NULL,
     `height` BIGINT(20) NOT NULL,
-    `hash` VARCHAR(68) NOT NULL COLLATE 'utf8mb3_general_ci',
-    `login_addr` VARCHAR(50) NOT NULL COLLATE 'utf8mb3_general_ci',
-    `amount` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8mb3_general_ci',
+    `hash` VARCHAR(68) NOT NULL COLLATE 'utf8_general_ci',
+    `login_addr` VARCHAR(50) NOT NULL COLLATE 'utf8_general_ci',
+    `amount` VARCHAR(30) NULL DEFAULT NULL COLLATE 'utf8_general_ci',
     `percent` DECIMAL(20,9) NULL DEFAULT NULL,
     `timestamp` BIGINT(20) NULL DEFAULT NULL,
-    PRIMARY KEY (`round_height`, `hash`, `login_addr`) USING BTREE
+    PRIMARY KEY (`round_height`, `hash`, `login_addr`) USING BTREE,
+    INDEX `login_addr` (`login_addr`) USING BTREE
 )
-COLLATE='utf8mb3_general_ci'
+COLLATE='utf8_general_ci'
 ENGINE=InnoDB;
 
 
 CREATE TABLE `finances` (
-    `coin` VARCHAR(20) NOT NULL DEFAULT '' COLLATE 'utf8mb3_general_ci',
+    `coin` VARCHAR(20) NOT NULL DEFAULT '' COLLATE 'utf8_general_ci',
     `immature` BIGINT(20) NULL DEFAULT '0',
     `pending` BIGINT(20) NULL DEFAULT '0',
     `balance` BIGINT(20) NULL DEFAULT '0',
-    `paid` BIGINT(20) NULL DEFAULT '0',
+    `paid` DECIMAL(26,0) NULL DEFAULT NULL,
     `last_height` BIGINT(20) NULL DEFAULT '0',
-    `last_hash` VARCHAR(68) NULL DEFAULT NULL COLLATE 'utf8mb3_general_ci',
+    `last_hash` VARCHAR(68) NULL DEFAULT NULL COLLATE 'utf8_general_ci',
     `total_mined` BIGINT(20) NULL DEFAULT '0',
     `payout_cnt` BIGINT(20) NULL DEFAULT '0',
+    `gas_fee` BIGINT(20) NULL DEFAULT '0',
     PRIMARY KEY (`coin`) USING BTREE
 )
-COLLATE='utf8mb3_general_ci'
+COLLATE='utf8_general_ci'
 ENGINE=InnoDB;
 
-
 CREATE TABLE `miner_charts` (
-    `login_addr` VARCHAR(68) NOT NULL DEFAULT '' COLLATE 'utf8mb3_general_ci',
+    `login_addr` VARCHAR(68) NOT NULL DEFAULT '' COLLATE 'utf8_general_ci',
     `time` BIGINT(20) NOT NULL DEFAULT '0',
     `time2` TIMESTAMP NULL DEFAULT NULL,
     `hash` BIGINT(20) NULL DEFAULT '0',
@@ -96,11 +96,11 @@ CREATE TABLE `miner_charts` (
     `report_hash` BIGINT(20) NULL DEFAULT '0',
     `share` INT(11) NULL DEFAULT NULL,
     `work_online` INT(11) NULL DEFAULT NULL,
+    `coin` VARCHAR(20) NULL DEFAULT '' COLLATE 'utf8_general_ci',
     PRIMARY KEY (`login_addr`, `time`) USING BTREE
 )
-COLLATE='utf8mb3_general_ci'
+COLLATE='utf8_general_ci'
 ENGINE=InnoDB;
-
 
 CREATE TABLE `miner_info` (
     `coin` VARCHAR(20) NOT NULL COLLATE 'utf8mb3_general_ci',

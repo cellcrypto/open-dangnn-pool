@@ -30,6 +30,10 @@ module.exports = function(environment) {
       PayoutThreshold: '0.5 Ether',
 
       scanerURL: 'http://explorer.dangnn.com/',
+      accountURL: 'account',
+      blockURL: 'block',
+      uncleURL: 'uncle',
+      txURL: 'tx',
 
       // For network hashrate (change for your favourite fork)
       BlockTime: 14.4,
@@ -37,18 +41,6 @@ module.exports = function(environment) {
       Unit: 'DGC',
     }
   };
-
-  if (environment === 'development') {
-    /* Override ApiUrl just for development, while you are customizing
-      frontend markup and css theme on your workstation.
-    */
-    ENV.APP.ApiUrl = 'http://localhost:8080/'
-    // ENV.APP.LOG_RESOLVER = true;
-    // ENV.APP.LOG_ACTIVE_GENERATION = true;
-    // ENV.APP.LOG_TRANSITIONS = true;
-    // ENV.APP.LOG_TRANSITIONS_INTERNAL = true;
-    // ENV.APP.LOG_VIEW_LOOKUPS = true;
-  }
 
   if (environment === 'test') {
     // Testem prefers this...
@@ -63,6 +55,17 @@ module.exports = function(environment) {
 
   if (environment === 'production') {
     ENV.APP.ApiUrl = 'http://127.0.0.1:8080/'
+  }
+  if (environment === 'development') {
+    /* Override ApiUrl just for development, while you are customizing
+      frontend markup and css theme on your workstation.
+    */
+    ENV.APP.ApiUrl = 'http://127.0.0.1:8080/'
+    // ENV.APP.LOG_RESOLVER = true;
+    // ENV.APP.LOG_ACTIVE_GENERATION = true;
+    // ENV.APP.LOG_TRANSITIONS = true;
+    // ENV.APP.LOG_TRANSITIONS_INTERNAL = true;
+    // ENV.APP.LOG_VIEW_LOOKUPS = true;
   }
 
   return ENV;

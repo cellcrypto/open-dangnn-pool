@@ -97,6 +97,16 @@ code {
 	color: #ffffff;
 }
 
+.navbar-default .btn-link {
+	color: #ffffff;
+  padding-top: 15px;
+  padding-bottom: 15px;
+}
+
+.navbar-default .btn-link:hover {
+	color: #ffffff;
+}
+
 @media (max-width: 767px) {
 	.navbar-default .navbar-nav .open .dropdown-menu > li > a {
 		color: #dadada;
@@ -177,6 +187,14 @@ h4.note {
 	font-weight: bold;
 }
 
+input[type=number] {-moz-appearance: textfield;}
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+
 #login-form {margin:5em auto 2em auto; padding:20px; width:340px; border:1px solid #bbaaff; background-color:#eeaaff; border-radius:10px; box-sizing: border-box;}
 #login-form label {display:block; margin-bottom:5px; font-weight:bold;}
 #login-form label[for=autologin] {font-weight:normal;}
@@ -184,4 +202,3 @@ h4.note {
 #login-form input[type=text], #login-form input[type=password], #login-form input[type=submit] {display: block; width: 100%;}
 #login-form input[type=text], #login-form input[type=password] {margin-bottom: 15px;}
 #login-form h3 {text-align: center;}
-

@@ -55,7 +55,8 @@ export default Ember.Route.extend({
 
   setupController: function(controller, model) {
     this._super(controller, model);
-    controller.set('loggedIn', this.get('auth').isLoggedIn());
     Ember.run.later(this, this.refresh, 5000);
+    controller.set('loggedIn', this.get('auth').isLoggedIn());
+
   }
 });

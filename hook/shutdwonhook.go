@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"reflect"
 	"sync"
 	"syscall"
 	"time"
@@ -80,16 +81,15 @@ func (s *ShutdownHook) Listen(signals ...os.Signal) {
 	for {
 		signal.Notify(ch, signals...)
 		sig = <-ch
-		fmt.Println("[######] Enter End Signal... ", sig.String())
+		target := reflect.ValueOf(sig)
+		fmt.Println("[######] Enter End Signal... ", target.Type(), sig.String())
 		if sig == syscall.SIGINT {
 			timeNow := time.Now().UnixNano()
-			if timeNow < timeGap + (1000 * int64(time.Millisecond)) {
+			if timeNow < timeGap+(1000*int64(time.Millisecond)) {
 				break
 			}
 			timeGap = time.Now().UnixNano()
-		} else if sig.String() == "window changed" {	// fixed bug ssh client
-
-		} else {
+		} else if sig == syscall.SIGTERM || sig == syscall.SIGKILL {
 			break
 		}
 	}

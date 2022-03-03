@@ -4,6 +4,7 @@ export default Ember.Controller.extend({
   options: ['allow', 'deny'],
   selectedRule: null,
   textIp: "",
+  errors: "",
 
   init() {
     this._super(...arguments);
@@ -26,5 +27,4 @@ export default Ember.Controller.extend({
       }
     }
   }
-  
 });

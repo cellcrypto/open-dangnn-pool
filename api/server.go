@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -335,10 +336,11 @@ func (s *ApiServer) listen() {
 	r.HandleFunc("/api/saveinbound", s.SaveInboundIndex)
 	r.HandleFunc("/api/delinbound", s.DelInboundIndex)
 	r.HandleFunc("/api/idbounds", s.DevIdInboundListIndex)
-	r.HandleFunc("/api/saveidbounds", s.InboundListIndex)
-	r.HandleFunc("/api/delidbounds", s.InboundListIndex)
+	r.HandleFunc("/api/saveidbound", s.SaveDevIdInboundIndex)
+	r.HandleFunc("/api/delidbound", s.DelIDboundIndex)
 	r.HandleFunc("/api/devsearch", s.GetLikeDevSubListIndex)
-
+	r.HandleFunc("/api/addsubid", s.SaveSubIdIndex)
+	r.HandleFunc("/api/delsubid", s.DelSubIdIndex)
 
 	r.HandleFunc("/test", s.TestIndex)
 
@@ -688,7 +690,7 @@ func (s *ApiServer) PayoutLimitIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	reply := make(map[string]interface{})
-	reply["msg"] = "ok"
+	reply["msg"] = "success"
 	w.WriteHeader(http.StatusOK)
 	err := json.NewEncoder(w).Encode(reply)
 	if err != nil {
@@ -758,7 +760,7 @@ func (s *ApiServer) SignInIndex(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, cookie)
 
 	reply := make(map[string]interface{})
-	reply["msg"] = "ok"
+	reply["msg"] = "success"
 	reply["token"] = token
 	w.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(w).Encode(reply)
@@ -841,7 +843,7 @@ func (s *ApiServer) GetTokenIndex(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, cookie)
 
 	reply := make(map[string]interface{})
-	reply["msg"] = "ok"
+	reply["msg"] = "success"
 	reply["token"] = token
 	w.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(w).Encode(reply)
@@ -871,6 +873,7 @@ type DevSubList struct {
 	DevId 	string `json:"devid"`
 	SubId 	string `json:"subid"`
 	Amount  string `json:"amount"`
+	allowId bool `json:"allowid"`
 }
 
 func (s *ApiServer) InboundListIndex(w http.ResponseWriter, r *http.Request) {
@@ -888,7 +891,7 @@ func (s *ApiServer) InboundListIndex(w http.ResponseWriter, r *http.Request) {
 
 	reply := make(map[string]interface{})
 	reply["inbounds"] = inboundList
-	reply["msg"] = "ok"
+	reply["msg"] = "success"
 	w.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(w).Encode(reply)
 	if err != nil {
@@ -919,7 +922,7 @@ func (s *ApiServer) SaveInboundIndex(w http.ResponseWriter, r *http.Request) {
 	reply := make(map[string]interface{})
 	if saveFlag {
 		reply["state"] = "true"
-		reply["msg"] = "ok"
+		reply["msg"] = "success"
 	} else {
 		reply["state"] = "false"
 		reply["msg"] = "failed"
@@ -954,7 +957,7 @@ func (s *ApiServer) DelInboundIndex(w http.ResponseWriter, r *http.Request) {
 	reply := make(map[string]interface{})
 	if saveFlag {
 		reply["state"] = "true"
-		reply["msg"] = "ok"
+		reply["msg"] = "success"
 	} else {
 		reply["state"] = "false"
 		reply["msg"] = "failed"
@@ -983,9 +986,81 @@ func (s *ApiServer) DevIdInboundListIndex(w http.ResponseWriter, r *http.Request
 
 	reply := make(map[string]interface{})
 	reply["idbounds"] = idboundList
-	reply["msg"] = "ok"
+	reply["msg"] = "success"
 	w.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(w).Encode(reply)
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
+
+func (s *ApiServer) SaveDevIdInboundIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	var ipInbound DbIPInbound
+	if err := json.NewDecoder(r.Body).Decode(&ipInbound); err != nil {
+		log.Printf("failed to Decode: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// validation data
+	if util.StringInSlice(ipInbound.Rule,[]string{"allow", "deny"}) == false {
+		return
+	}
+
+
+	saveFlag := s.db.SaveIdInbound(ipInbound.Ip,ipInbound.Rule)
+
+	reply := make(map[string]interface{})
+	if saveFlag {
+		reply["state"] = "true"
+		reply["msg"] = "success"
+	} else {
+		reply["state"] = "false"
+		reply["msg"] = "failed"
+	}
+
+	w.WriteHeader(http.StatusOK)
+	err := json.NewEncoder(w).Encode(reply)
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
+
+func (s *ApiServer) DelIDboundIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	var idInbound DbIPInbound
+	if err := json.NewDecoder(r.Body).Decode(&idInbound); err != nil {
+		log.Printf("failed to Decode: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// validation data
+
+
+
+	saveFlag := s.db.DelIdInbound(idInbound.Ip)
+
+	reply := make(map[string]interface{})
+	if saveFlag {
+		reply["state"] = "true"
+		reply["msg"] = "success"
+	} else {
+		reply["state"] = "false"
+		reply["msg"] = "failed"
+	}
+
+	w.WriteHeader(http.StatusOK)
+	err := json.NewEncoder(w).Encode(reply)
 	if err != nil {
 		log.Println("Error serializing API response: ", err)
 	}
@@ -1004,6 +1079,13 @@ func (s *ApiServer) GetLikeDevSubListIndex(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// validation data
+	//if !util.IsValidHexAddress(devSubList.DevId) {
+	//	log.Printf("failed to DevId: %v", devSubList.DevId)
+	//	w.WriteHeader(http.StatusBadRequest)
+	//	return
+	//}
+
 	devList, err := s.db.GetLikeMinerSubList(devSubList.DevId)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -1013,13 +1095,152 @@ func (s *ApiServer) GetLikeDevSubListIndex(w http.ResponseWriter, r *http.Reques
 
 	reply := make(map[string]interface{})
 	reply["devlist"] = devList
-	reply["msg"] = "ok"
+	reply["msg"] = "success"
 	w.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(w).Encode(reply)
 	if err != nil {
 		log.Println("Error serializing API response: ", err)
 	}
 }
+
+
+func (s *ApiServer) SaveSubIdIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	var devSubList DevSubList
+	if err := json.NewDecoder(r.Body).Decode(&devSubList); err != nil {
+		log.Printf("failed to Decode: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	ok := false
+	// validation data
+	if devSubList.DevId, ok = util.CheckValidHexAddress(devSubList.DevId); !ok {
+		log.Printf("failed to DevId: %v", devSubList.DevId)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if devSubList.SubId, ok = util.CheckValidHexAddress(devSubList.SubId); !ok {
+		log.Printf("failed to SubId: %v", devSubList.SubId)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// Get the quantity and set the max value
+	devList, err := s.db.GetMinerSubList(devSubList.DevId)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Printf("Failed to UpdatePayoutLimit()")
+		return
+	}
+
+	var (
+		devTotalCount = int64(0)
+		addCount = int64(0)
+	)
+
+	for _, dev := range devList {
+		count := int64(1)
+		if dev.Amount > 1 {
+			count = dev.Amount
+		}
+
+		devTotalCount += count
+		if devSubList.DevId == dev.DevAddr && devSubList.SubId == dev.SubAddr {
+			addCount += count
+		}
+	}
+	amount, _ := strconv.ParseInt(devSubList.Amount,16,64)
+	addCount += amount
+	devTotalCount += amount
+	if devTotalCount > 18 {
+		log.Printf("Exceeding max dev count")
+		s.ErrorWrite(w, "Exceeding max dev count")
+		return
+	}
+
+	saveFlag := s.db.SaveSubIdIndex(devSubList.DevId, devSubList.SubId, addCount)
+	if saveFlag && devSubList.allowId {
+		// Allow ID
+		s.db.SaveIdInbound(devSubList.DevId,"allow")
+	}
+
+	reply := make(map[string]interface{})
+	if saveFlag {
+		reply["state"] = "true"
+		reply["msg"] = "success"
+	} else {
+		reply["state"] = "false"
+		reply["msg"] = "failed"
+	}
+
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(reply)
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
+
+func (s *ApiServer) DelSubIdIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	var devSubList DevSubList
+	if err := json.NewDecoder(r.Body).Decode(&devSubList); err != nil {
+		log.Printf("failed to Decode: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	ok := false
+	// validation data
+	if devSubList.DevId, ok = util.CheckValidHexAddress(devSubList.DevId); !ok {
+		log.Printf("failed to DevId: %v", devSubList.DevId)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if devSubList.SubId, ok = util.CheckValidHexAddress(devSubList.SubId); !ok {
+		log.Printf("failed to SubId: %v", devSubList.SubId)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	saveFlag := s.db.DelSubIdIndex(devSubList.DevId,devSubList.SubId)
+
+	reply := make(map[string]interface{})
+	if saveFlag {
+		reply["state"] = "true"
+		reply["msg"] = "success"
+	} else {
+		reply["state"] = "false"
+		reply["msg"] = "failed"
+	}
+
+	w.WriteHeader(http.StatusOK)
+	err := json.NewEncoder(w).Encode(reply)
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
+func (s *ApiServer) ErrorWrite(w http.ResponseWriter, errorStr string) {
+	reply := make(map[string]interface{})
+	reply["state"] = "false"
+	reply["msg"] = errorStr
+	w.WriteHeader(http.StatusOK)
+	err := json.NewEncoder(w).Encode(reply)
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
 
 func (s *ApiServer) SignupIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -1050,7 +1271,7 @@ func (s *ApiServer) SignupIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	reply := make(map[string]interface{})
-	reply["msg"] = "ok"
+	reply["msg"] = "success"
 	w.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(w).Encode(reply)
 	if err != nil {

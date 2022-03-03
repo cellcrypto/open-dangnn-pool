@@ -18,7 +18,7 @@
         <div class="modal-body">
           <div class="input-group">
             <label for="comment">Dev ID:  </label>
-            {{input value="" change=(action "required") placeholder="0x..." name="id"}}
+            {{input value=textID change=(action "required") placeholder="0x..." name="id"}}
             <br>
             <label for="sel1">Rule:</label>
             <select onchange={{action (mut selectedRule) value='target.value'}}>

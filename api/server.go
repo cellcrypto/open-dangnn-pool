@@ -697,13 +697,15 @@ func (s *ApiServer) PayoutLimitIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	minPayout := s.config.Threshold
 	maxPayout := s.config.Threshold * 100
-	if setPayout < minPayout {
-		s.WirteResponseData(w, http.StatusBadRequest, "Failed to UpdatePayoutLimit:payout out of range(min:%v)", minPayout)
-		return
-	}
-	if setPayout > maxPayout {
-		s.WirteResponseData(w, http.StatusBadRequest, "Failed to UpdatePayoutLimit:payout out of range(max:%v)", maxPayout)
-		return
+	if setPayout != 0 {	// Default if 0
+		if setPayout < minPayout {
+			s.WirteResponseData(w, http.StatusBadRequest, "Failed to UpdatePayoutLimit:payout out of range(min:%v)", minPayout)
+			return
+		}
+		if setPayout > maxPayout {
+			s.WirteResponseData(w, http.StatusBadRequest, "Failed to UpdatePayoutLimit:payout out of range(max:%v)", maxPayout)
+			return
+		}
 	}
 
 	if !s.db.UpdatePayoutLimit(login, value) {

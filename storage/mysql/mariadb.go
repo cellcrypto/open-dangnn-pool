@@ -1061,8 +1061,8 @@ func (d *Database) WritePayment(login, txHash string, amount int64,gasFee int64,
 		log.Fatal(err)
 	}
 	_, err = tx.Exec(
-		"INSERT INTO payments_all(login_addr,`from`,tx_hash,amount,`timestamp`,coin) VALUE (?,?,?,?,?,?)",
-		login, from, txHash, amount, nowTime, d.Config.Coin)
+		"INSERT INTO payments_all(login_addr,`from`,tx_hash,amount,tx_fee,`timestamp`,coin) VALUE (?,?,?,?,?,?,?)",
+		login, from, txHash, amount, gasFee, nowTime, d.Config.Coin)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1208,7 +1208,7 @@ func (d *Database) getMinerInfo(login string) (map[string]interface{}, int64, er
 
 func (d *Database) getMinerPayments(login string, maxPayments int64) ([]map[string]interface{}, error) {
 	conn := d.Conn
-	rows, err := conn.Query("SELECT tx_hash, amount, `timestamp`, insert_time FROM payments_all WHERE coin=? AND login_addr=? ORDER BY seq DESC LIMIT ? ", d.Config.Coin, login, maxPayments)
+	rows, err := conn.Query("SELECT tx_hash, amount, tx_fee, `timestamp`, insert_time FROM payments_all WHERE coin=? AND login_addr=? ORDER BY seq DESC LIMIT ? ", d.Config.Coin, login, maxPayments)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1217,10 +1217,10 @@ func (d *Database) getMinerPayments(login string, maxPayments int64) ([]map[stri
 	var result []map[string]interface{}
 	for rows.Next() {
 		var (
-			txHash, amount, timestamp, insertTime string
+			txHash, amount, txFee, timestamp, insertTime string
 		)
 
-		err := rows.Scan(&txHash, &amount, &timestamp, &insertTime)
+		err := rows.Scan(&txHash, &amount, &txFee, &timestamp, &insertTime)
 		if err != nil {
 			log.Printf("mysql getMinerPayments:rows.Scan() error: %v",err)
 			return nil, err
@@ -1238,6 +1238,7 @@ func (d *Database) getMinerPayments(login string, maxPayments int64) ([]map[stri
 		d.convertStringMap(tx, "tx", txHash)
 		d.convertStringMap(tx, "address", login)
 		d.convertStringMap(tx, "amount", amount)
+		d.convertStringMap(tx, "tx_fee", txFee)
 
 		result = append(result, tx)
 	}

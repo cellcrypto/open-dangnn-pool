@@ -1,0 +1,123 @@
+<div class="container">
+  {{#if model.registers}}
+  <h4>Account List <button type="button" class="btn btn-danger btn-sm" data-toggle="modal" data-target="#addModal">add</button></h4>
+
+  <!-- Modal -->
+  <div class="modal fade" id="addModal" tabindex="-1" aria-labelledby="addModal" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+
+          <h5 class="modal-title" id="addModal">ADD Account</h5>
+          <ul class="errors">
+            {{#each errors as |error|}}
+              <li>{{error.message}}</li>
+            {{/each}}
+          </ul>
+        </div>
+        <div class="modal-body">
+          <div class="input-group">
+            <label for="comment">Account:</label>
+            {{input value=textID change=(action "required") name="username"}}
+            <br>
+            <label for="pass">Password:</label><br>
+            {{input type="password" value=textPass  placeholder="*********" name="pass1"}}<br>
+            {{input type="password" value=textPassConfirm change=(action "requiredPassConfirm") placeholder="*********" name="pass2"}}
+            <br>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+          <button type="button" {{ action "add" }} data-dismiss="modal" class="btn btn-primary">ADD</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal fade" id="accessModal" tabindex="-1" aria-labelledby="accessModal" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+        <h5 class="modal-title" id="accessModal">Change Access</h5>
+        </div>
+        <div class="modal-body">
+          <div class="input-group">
+              <label for="sel1">Access : </label><br>
+              <select onchange={{action (mut selectedAccess) value='target.value'}}>
+                {{#each options as |option|}}
+                  <option value={{option}}>{{option}}</option>
+                {{/each}}
+              </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+          <button type="button" {{ action "changeAccess" }} data-dismiss="modal" class="btn btn-primary">Change Access</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Modal -->
+  <div class="modal fade" id="passModal" tabindex="-1" aria-labelledby="passModal" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+        <h5 class="modal-title" id="passModal">Change Password</h5>
+        </div>
+        <div class="modal-body">
+            <label for="changePass">Password:</label><br>
+            {{input type="password" value=textChangePass change=(action "requiredChangePass") placeholder="*********" name="passc1"}}<br>
+            {{input type="password" value=textChangePassConfirm change=(action "requiredChangePassConfirm") placeholder="*********" name="passc2"}}
+
+        </div>
+        <div class="modal-footer">
+          <button type="button"  {{ action "create" }} class="btn btn-secondary" data-dismiss="modal">Close</button>
+          <button type="button" {{ action "changePass" }} data-dismiss="modal" class="btn btn-primary">Change Password</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-condensed table-striped">
+      <thead>
+        <tr>
+          <th>Account</th>
+          <th>Allowed</th>
+          <th>X</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each model.registers as |reg|}}
+          <tr>
+            <td>
+              {{reg.username}}
+            </td>
+            <td>
+              {{reg.access}}
+            </td>
+            <td>
+              {{#if (compare model.username '===' "admin")}}
+                {{#if (compare model.username '!=' reg.username)}}
+                  <button class="btn btn-primary btn-sm" {{action "focusline" reg.username}} data-toggle="modal" data-target="#accessModal">Change Access</button>
+                  <button class="btn btn-primary btn-sm" {{action "focusline" reg.username}} data-toggle="modal" data-target="#passModal">Change Password</button>
+                  <button {{ action "delete" reg.username}} class="btn btn-danger btn-sm">Delete</button>
+                {{else}}
+                  <button class="btn btn-primary btn-sm" {{action "focusline" reg.username}} data-toggle="modal" data-target="#passModal">Change Password</button>
+                {{/if}}
+              {{else}}
+                {{#if (compare model.username '===' reg.username)}}
+                  <button class="btn btn-primary btn-sm" {{action "focusline" reg.username}} data-toggle="modal" data-target="#passModal">Change Password</button>
+                {{/if}}
+              {{/if}}
+            </td>
+          </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <h3>No Register List yet</h3>
+  {{/if}}
+</div>

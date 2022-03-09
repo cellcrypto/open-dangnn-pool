@@ -63,6 +63,7 @@ type Worker struct {
 	Size  			int64 `json:"size"`
 	RoundShare		float32 `json:"rshare"`
 	Reported		int64 `json:"reported"`
+	DevId			string `json:"devid"`
 }
 
 type IMysqlDB interface {
@@ -300,7 +301,7 @@ func (r *RedisClient) CheckPoWExist(height uint64, params []string) (bool, error
 	return val == 0, err
 }
 
-func (r *RedisClient) WriteShare(login, id string, params []string, diff int64, height uint64, window time.Duration, hostname string, loginCnt int) (bool, error) {
+func (r *RedisClient) WriteShare(login, devId, id string, params []string, diff int64, height uint64, window time.Duration, hostname string, loginCnt int) (bool, error) {
 	tx := r.client.Multi()
 	defer tx.Close()
 
@@ -308,14 +309,14 @@ func (r *RedisClient) WriteShare(login, id string, params []string, diff int64, 
 	ts := ms / 1000
 
 	_, err := tx.Exec(func() error {
-		r.writeShare(tx, ms, ts, login, id, diff, window, hostname, loginCnt)
+		r.writeShare(tx, ms, ts, login, id, diff, window, hostname, loginCnt, devId)
 		tx.HIncrBy(r.formatKey("stats"), "roundShares", diff)
 		return nil
 	})
 	return false, err
 }
 
-func (r *RedisClient) WriteBlock(login, id string, params []string, diff, roundDiff int64, height uint64, window time.Duration, hostname string, loginCnt int) (bool, error) {
+func (r *RedisClient) WriteBlock(login, devId, id string, params []string, diff, roundDiff int64, height uint64, window time.Duration, hostname string, loginCnt int) (bool, error) {
 	tx := r.client.Multi()
 	defer tx.Close()
 
@@ -324,7 +325,7 @@ func (r *RedisClient) WriteBlock(login, id string, params []string, diff, roundD
 	ts := ms / 1000
 
 	cmds, err := tx.Exec(func() error {
-		r.writeShare(tx, ms, ts, login, id, diff, window, hostname, loginCnt)
+		r.writeShare(tx, ms, ts, login, id, diff, window, hostname, loginCnt, devId)
 		tx.HSet(r.formatKey("stats"), "lastBlockFound", strconv.FormatInt(ts, 10))
 		tx.HDel(r.formatKey("stats"), "roundShares")
 		tx.ZIncrBy(r.formatKey("finders"), 1, login)
@@ -371,7 +372,7 @@ func (r *RedisClient) WriteBlock(login, id string, params []string, diff, roundD
 	}
 }
 
-func (r *RedisClient) writeShare(tx *redis.Multi, ms, ts int64, login, id string, diff int64, expire time.Duration, hostname string, loginCnt int) {
+func (r *RedisClient) writeShare(tx *redis.Multi, ms, ts int64, login, id string, diff int64, expire time.Duration, hostname string, loginCnt int, devId string) {
 	times := int(diff / r.DiffByShareValue)
 
 	// Moved get hostname to stratums
@@ -385,7 +386,7 @@ func (r *RedisClient) writeShare(tx *redis.Multi, ms, ts int64, login, id string
 	// For aggregation of hashrate, to store value in hashrate key
 	tx.ZAdd(r.formatKey("hashrate"), redis.Z{Score: float64(ts), Member: util.Join(diff, login, id, ms, diff, hostname)})
 	// For separate miner's workers hashrate, to store under hashrate table under login key
-	tx.ZAdd(r.formatKey("hashrate", login), redis.Z{Score: float64(ts), Member: util.Join(diff, id, loginCnt, ms, diff, hostname)})
+	tx.ZAdd(r.formatKey("hashrate", login), redis.Z{Score: float64(ts), Member: util.Join(diff, id, loginCnt, ms, diff, hostname, devId)})
 	// Will delete hashrates for miners that gone
 	tx.Expire(r.formatKey("hashrate", login), expire)
 	//tx.HSet(r.formatKey("miners", login), "lastShare", strconv.FormatInt(ts, 10))
@@ -1210,6 +1211,12 @@ func convertWorkersStats(window int64, raw *redis.ZSliceCmd, divFlag bool) map[s
 		id := parts[1]
 		score := int64(v.Score)
 		worker := workers[id]
+
+		if len(parts) > 6 {
+			worker.DevId = parts[6]
+		} else {
+			worker.DevId = "unknown"
+		}
 
 		worker.Size, _ = strconv.ParseInt(parts[2], 10, 64)
 		if worker.Size < 1 { worker.Size=1 }

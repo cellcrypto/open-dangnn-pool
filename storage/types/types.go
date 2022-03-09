@@ -64,6 +64,11 @@ type InboundIdList struct {
 	Desc	string
 }
 
+type UserInfo struct {
+	Username string `json:"username"`
+	Access string `json:"access"`
+}
+
 type DevSubList struct {
 	DevAddr 	string
 	SubAddr 	string

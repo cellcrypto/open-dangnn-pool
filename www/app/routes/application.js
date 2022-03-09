@@ -26,6 +26,7 @@ export default Ember.Route.extend({
 
     if (this.get('auth').isLoggedIn() === false) {
       this.transitionTo('/login');
+      return Ember.Object.create();
       return ;
     }
 

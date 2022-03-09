@@ -273,6 +273,7 @@ func (s *ApiServer) CheckJwtToken(r *http.Request, requestURI string) (bool,stri
 
 		login, _ = token.Claims.(jwt.MapClaims)["user_id"].(string)
 	}
+	r.Header.Set("login", login)
 
 	accessFlag := false
 	if access, ok := token.Claims.(jwt.MapClaims)["access"]; ok {
@@ -343,6 +344,11 @@ func (s *ApiServer) listen() {
 	r.HandleFunc("/api/devsearch", s.GetLikeDevSubListIndex)
 	r.HandleFunc("/api/addsubid", s.SaveSubIdIndex)
 	r.HandleFunc("/api/delsubid", s.DelSubIdIndex)
+
+	r.HandleFunc("/api/addaccount", s.AddAccountIndex)
+	r.HandleFunc("/api/changeacc", s.ChangeAccessIndex)
+	r.HandleFunc("/api/changepass", s.ChangePasswordIndex)
+	r.HandleFunc("/api/delaccount", s.DelAccounIndex)
 
 	r.HandleFunc("/test", s.TestIndex)
 
@@ -554,7 +560,7 @@ func (s *ApiServer) AccountIndex(w http.ResponseWriter, r *http.Request) {
 	cacheIntv := int64(s.statsIntv / time.Millisecond)
 	// Refresh stats if stale
 	if !ok || reply.updatedAt < now-cacheIntv {
-		exist, err := s.db.IsMinerExists(login)
+		exist, _, err := s.db.IsMinerExists(login)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			log.Printf("Failed to fetch stats from backend: %v", err)
@@ -622,22 +628,19 @@ func (s *ApiServer) AccountExIndex(w http.ResponseWriter, r *http.Request) {
 	cacheIntv := int64(s.statsIntv / time.Millisecond)
 	// Refresh stats if stale
 	if !ok || reply.updatedAt < now-cacheIntv {
-		exist, err := s.db.IsMinerExists(login)
+		exist, setPayout, err := s.db.IsMinerExists(login)
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			log.Printf("Failed to fetch stats from backend: %v", err)
+			s.WirteResponseData(w, http.StatusInternalServerError, "Failed to fetch stats from backend: %v", err)
 			return
 		}
 		if !exist {
-			w.WriteHeader(http.StatusNotFound)
+			s.WirteResponseData(w, http.StatusNotFound, "non-existent minor")
 			return
 		}
 
-
 		stats, err := s.backend.GetMinerStats(login, s.config.Payments)
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			log.Printf("Failed to fetch stats from backend: %v", err)
+			s.WirteResponseData(w, http.StatusInternalServerError, "Failed to no minor information: %v", err)
 			return
 		}
 		reportedHash, _ := s.backend.GetReportedtHashrate(login)
@@ -654,6 +657,7 @@ func (s *ApiServer) AccountExIndex(w http.ResponseWriter, r *http.Request) {
 		stats["pageSize"] = s.config.Payments
 		stats["minPayout"] = s.config.Threshold
 		stats["maxPayout"] = s.config.Threshold * 100
+		stats["setPayout"] = setPayout
 		stats["minerCharts"], err = s.db.GetMinerCharts(s.config.MinerChartsNum, s.minerPoolChartIntv, login, ts)
 		//stats["minerCharts"], err = s.backend.GetMinerCharts(s.config.MinerChartsNum, login)
 		//stats["paymentCharts"], err = s.backend.GetPaymentCharts(login)
@@ -685,15 +689,44 @@ func (s *ApiServer) PayoutLimitIndex(w http.ResponseWriter, r *http.Request) {
 	login := strings.ToLower(mux.Vars(r)["login"])
 	value := strings.ToLower(mux.Vars(r)["value"])
 
+	// value check
+	setPayout,err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		s.WirteResponseData(w, http.StatusBadRequest,"Failed to set payout value error:%v",err)
+		return
+	}
+	minPayout := s.config.Threshold
+	maxPayout := s.config.Threshold * 100
+	if setPayout < minPayout {
+		s.WirteResponseData(w, http.StatusBadRequest, "Failed to UpdatePayoutLimit:payout out of range(min:%v)", minPayout)
+		return
+	}
+	if setPayout > maxPayout {
+		s.WirteResponseData(w, http.StatusBadRequest, "Failed to UpdatePayoutLimit:payout out of range(max:%v)", maxPayout)
+		return
+	}
+
 	if !s.db.UpdatePayoutLimit(login, value) {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("Failed to UpdatePayoutLimit()")
+		s.WirteResponseData(w, http.StatusInternalServerError, "Failed to UpdatePayoutLimit (%v)",login)
 		return
 	}
 
 	reply := make(map[string]interface{})
 	reply["msg"] = "success"
 	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(reply)
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
+func (s *ApiServer) WirteResponseData(w http.ResponseWriter, status int, format string, v ...interface{}) {
+	msg := fmt.Sprintf(format, v...)
+	log.Printf(msg)
+
+	reply := make(map[string]interface{})
+	reply["msg"] = msg
+	w.WriteHeader(status)
 	err := json.NewEncoder(w).Encode(reply)
 	if err != nil {
 		log.Println("Error serializing API response: ", err)
@@ -857,6 +890,7 @@ func (s *ApiServer) GetTokenIndex(w http.ResponseWriter, r *http.Request) {
 type User struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	Access	string `json:"access"`
 }
 
 type UserToken struct {
@@ -914,10 +948,11 @@ func (s *ApiServer) SaveInboundIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// validation data
-	if util.StringInSlice(ipInbound.Rule,[]string{"allow", "deny"}) == false {
+	if !util.StringInSlice(ipInbound.Rule,[]string{"allow", "deny"}) {
+		log.Printf("failed to incorrect value: %v", ipInbound.Rule)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-
 
 	saveFlag := s.db.SaveIpInbound(ipInbound.Ip,ipInbound.Rule)
 
@@ -1014,6 +1049,12 @@ func (s *ApiServer) SaveDevIdInboundIndex(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	var ok bool
+	if ipInbound.Ip, ok = util.CheckValidHexAddress(ipInbound.Ip); !ok {
+		log.Printf("failed to DevId: %v", ipInbound.Ip)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 
 	saveFlag := s.db.SaveIdInbound(ipInbound.Ip,ipInbound.Rule)
 
@@ -1236,6 +1277,161 @@ func (s *ApiServer) DelSubIdIndex(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *ApiServer) AddAccountIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	var userToken UserToken
+	if err := json.NewDecoder(r.Body).Decode(&userToken); err != nil {
+		log.Printf("failed to Decode: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// validation data
+	if !util.IsValidUsername(userToken.Username) {
+		log.Printf("failed to Username: %v", userToken.Username)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	hashedPassword, err := util.HashPassword(userToken.Password)
+	if err != nil {
+		log.Printf("failed to GenerateFromPassword: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if !s.db.CreateAccount(userToken.Username, hashedPassword, "none") {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Printf("Failed to UpdatePayoutLimit()")
+		return
+	}
+
+	reply := make(map[string]interface{})
+	reply["msg"] = "success"
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(reply)
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
+
+func (s *ApiServer) ChangeAccessIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	var user User
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+		log.Printf("failed to Decode: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// validation data
+	if !util.IsValidUsername(user.Username) {
+		log.Printf("failed to Username: %v", user.Username)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if !util.StringInSlice(user.Access,[]string{"none", "all", "user"}) {
+		log.Printf("failed to incorrect value: %v", user.Access)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if !s.db.ChangeAccountAccess(user.Username, user.Access) {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Printf("Failed to ChangeAccountAccess()")
+		return
+	}
+
+	reply := make(map[string]interface{})
+	reply["msg"] = "success"
+	w.WriteHeader(http.StatusOK)
+	err := json.NewEncoder(w).Encode(reply)
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
+func (s *ApiServer) ChangePasswordIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	var user User
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+		log.Printf("failed to Decode: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// validation data
+	if !util.IsValidUsername(user.Username) {
+		log.Printf("failed to Username: %v", user.Username)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	hashedPassword, err := util.HashPassword(user.Password)
+	if err != nil {
+		log.Printf("failed to GenerateFromPassword: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if !s.db.ChangeAccountPassword(user.Username, hashedPassword) {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Printf("Failed to ChangePasswordIndex()")
+		return
+	}
+
+	reply := make(map[string]interface{})
+	reply["msg"] = "success"
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(reply)
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
+
+func (s *ApiServer) DelAccounIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	var user User
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+		log.Printf("failed to Decode: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// validation data
+	if !util.IsValidUsername(user.Username) {
+		log.Printf("failed to Username: %v", user.Username)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if !s.db.DeleteAccount(user.Username) {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Printf("Failed to DelAccounIndex()")
+		return
+	}
+
+	reply := make(map[string]interface{})
+	reply["msg"] = "success"
+	w.WriteHeader(http.StatusOK)
+	err := json.NewEncoder(w).Encode(reply)
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
 func (s *ApiServer) ErrorWrite(w http.ResponseWriter, errorStr string) {
 	reply := make(map[string]interface{})
 	reply["state"] = "false"
@@ -1262,6 +1458,12 @@ func (s *ApiServer) SignupIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// validation data
+	if !util.IsValidUsername(user.Username) {
+		log.Printf("failed to Username: %v", user.Username)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	hashedPassword, err := util.HashPassword(user.Password)
 	if err != nil {
 		log.Printf("failed to GenerateFromPassword: %v", err)
@@ -1270,7 +1472,7 @@ func (s *ApiServer) SignupIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 
-	if !s.db.CreateAccount(user.Username, hashedPassword) {
+	if !s.db.CreateAccount(user.Username, hashedPassword, "none") {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Printf("Failed to UpdatePayoutLimit()")
 		return
@@ -1291,37 +1493,28 @@ func (s *ApiServer) GetAccountListIndex(w http.ResponseWriter, r *http.Request) 
 	//w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Cache-Control", "no-cache")
 
-	log.Println("Sign up")
-	var user User
+	log.Println("GetAccountListIndex")
 
-	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
-		log.Printf("failed to Decode: %v", err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	hashedPassword, err := util.HashPassword(user.Password)
+	userInfo, err:= s.db.GetAccountList()
 	if err != nil {
-		log.Printf("failed to GenerateFromPassword: %v", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-
-	if !s.db.CreateAccount(user.Username, hashedPassword) {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Printf("Failed to UpdatePayoutLimit()")
 		return
 	}
 
+	idToken := r.Header.Get("login")
+
 	reply := make(map[string]interface{})
 	reply["msg"] = "success"
+	reply["username"] = idToken
+	reply["registers"] = userInfo
 	w.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(w).Encode(reply)
 	if err != nil {
 		log.Println("Error serializing API response: ", err)
 	}
 }
+
 
 
 //

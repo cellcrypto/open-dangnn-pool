@@ -27,13 +27,13 @@ module.exports = function(environment) {
 
       // Fee and payout details
       PoolFee: '0.9%',
-      PayoutThreshold: '0.5 Ether',
+      PayoutThreshold: '50 DGC',
 
       scanerURL: 'http://explorer.dangnn.com/',
-      accountURL: 'account',
-      blockURL: 'block',
-      uncleURL: 'uncle',
-      txURL: 'tx',
+      accountURL: 'account-detail',
+      blockURL: 'block-detail',
+      uncleURL: 'block-detail',
+      txURL: 'transaction-detail',
 
       // For network hashrate (change for your favourite fork)
       BlockTime: 14.4,

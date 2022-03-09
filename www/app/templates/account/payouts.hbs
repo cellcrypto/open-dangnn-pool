@@ -16,7 +16,7 @@
           <tr>
             <td>{{format-date-locale tx.timestamp}}</td>
             <td>
-              <a href="{{config.scanerURL}}transaction-detail/{{tx.tx}}" class="hash" rel="nofollow" target="_blank">{{tx.tx}}</a>
+              <a href="{{config.scanerURL}}{{config.txURL}}/{{tx.tx}}" class="hash" rel="nofollow" target="_blank">{{tx.tx}}</a>
             </td>
             <td>{{format-balance tx.amount}}</td>
           </tr>

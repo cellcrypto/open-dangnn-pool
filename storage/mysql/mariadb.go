@@ -1040,6 +1040,7 @@ func (d *Database) UpdateBalance(login string, amount int64, gasFee int64, coin 
 }
 
 func (d *Database) WritePayment(login, txHash string, amount int64,gasFee int64, coin string, from string) error {
+	nowTime := util.MakeTimestamp() / 1000
 	conn := d.Conn
 
 	tx, err := conn.Begin()
@@ -1060,8 +1061,8 @@ func (d *Database) WritePayment(login, txHash string, amount int64,gasFee int64,
 		log.Fatal(err)
 	}
 	_, err = tx.Exec(
-		"INSERT INTO payments_all(login_addr,`from`,tx_hash,amount,coin) VALUE (?,?,?,?,?)",
-		login, from, txHash, amount, d.Config.Coin)
+		"INSERT INTO payments_all(login_addr,`from`,tx_hash,amount,`timestamp`,coin) VALUE (?,?,?,?,?,?)",
+		login, from, txHash, amount, nowTime, d.Config.Coin)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1207,7 +1208,7 @@ func (d *Database) getMinerInfo(login string) (map[string]interface{}, int64, er
 
 func (d *Database) getMinerPayments(login string, maxPayments int64) ([]map[string]interface{}, error) {
 	conn := d.Conn
-	rows, err := conn.Query("SELECT tx_hash, amount, insert_time FROM payments_all WHERE coin=? AND login_addr=? ORDER BY seq DESC LIMIT ? ", d.Config.Coin, login, maxPayments)
+	rows, err := conn.Query("SELECT tx_hash, amount, `timestamp`, insert_time FROM payments_all WHERE coin=? AND login_addr=? ORDER BY seq DESC LIMIT ? ", d.Config.Coin, login, maxPayments)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1216,10 +1217,10 @@ func (d *Database) getMinerPayments(login string, maxPayments int64) ([]map[stri
 	var result []map[string]interface{}
 	for rows.Next() {
 		var (
-			txHash, amount, insertTime string
+			txHash, amount, timestamp, insertTime string
 		)
 
-		err := rows.Scan(&txHash, &amount, &insertTime)
+		err := rows.Scan(&txHash, &amount, &timestamp, &insertTime)
 		if err != nil {
 			log.Printf("mysql getMinerPayments:rows.Scan() error: %v",err)
 			return nil, err
@@ -1230,10 +1231,10 @@ func (d *Database) getMinerPayments(login string, maxPayments int64) ([]map[stri
 		//tx["tx"] = txHash
 		//tx["address"] = login
 		//tx["amount"], _ = strconv.ParseInt(amount, 10, 64)
-		timestamp := util.MakeTimestampDB2(insertTime) / 1000
+		// timestamp := util.MakeTimestampDB2(insertTime) / 1000
 		d.convertStringMap(tx, "timeFormat", insertTime)
-		d.convertStringMap(tx, "timestamp", strconv.FormatInt(timestamp, 10))
-		d.convertStringMap(tx, "x", strconv.FormatInt(timestamp, 10))
+		d.convertStringMap(tx, "timestamp", timestamp)
+		d.convertStringMap(tx, "x", timestamp)
 		d.convertStringMap(tx, "tx", txHash)
 		d.convertStringMap(tx, "address", login)
 		d.convertStringMap(tx, "amount", amount)
@@ -1245,7 +1246,7 @@ func (d *Database) getMinerPayments(login string, maxPayments int64) ([]map[stri
 
 func (d *Database) GetAllPayments(maxPayments int64) ([]map[string]interface{}, int64, error) {
 	conn := d.Conn
-	rows, err := conn.Query("SELECT login_addr,tx_hash,amount,insert_time FROM payments_all WHERE coin=? ORDER BY seq DESC LIMIT ? ", d.Config.Coin, maxPayments)
+	rows, err := conn.Query("SELECT login_addr,tx_hash,amount,`timestamp`,insert_time FROM payments_all WHERE coin=? ORDER BY seq DESC LIMIT ? ", d.Config.Coin, maxPayments)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1254,10 +1255,10 @@ func (d *Database) GetAllPayments(maxPayments int64) ([]map[string]interface{}, 
 	var result []map[string]interface{}
 	for rows.Next() {
 		var (
-			address, txHash, amount, insertTime string
+			address, txHash, amount, timestamp, insertTime string
 		)
 
-		err := rows.Scan(&address, &txHash, &amount, &insertTime)
+		err := rows.Scan(&address, &txHash, &amount, &timestamp, &insertTime)
 		if err != nil {
 			log.Printf("mysql getMinerPayments:rows.Scan() error: %v",err)
 			return nil, 0, err
@@ -1268,10 +1269,9 @@ func (d *Database) GetAllPayments(maxPayments int64) ([]map[string]interface{}, 
 		//tx["tx"] = txHash
 		//tx["address"] = login
 		//tx["amount"], _ = strconv.ParseInt(amount, 10, 64)
-		timestamp := util.MakeTimestampDB2(insertTime) / 1000
 		d.convertStringMap(tx, "timeFormat", insertTime)
-		d.convertStringMap(tx, "timestamp", strconv.FormatInt(timestamp, 10))
-		d.convertStringMap(tx, "x", strconv.FormatInt(timestamp, 10))
+		d.convertStringMap(tx, "timestamp", timestamp)
+		d.convertStringMap(tx, "x", timestamp)
 		d.convertStringMap(tx, "tx", txHash)
 		d.convertStringMap(tx, "address", address)
 		d.convertStringMap(tx, "amount", amount)
@@ -1491,19 +1491,30 @@ func (d *Database) GetPoolBalanceByOnce(maxHeight, minHeight int64, coin string)
 	return big.NewInt(0), 0, nil
 }
 
-func (d *Database) IsMinerExists(login string) (bool,error) {
+func (d *Database) IsMinerExists(login string) (bool,int64,error) {
 	conn := d.Conn
 
-	rows, err := conn.Query("SELECT login_addr FROM miner_info WHERE coin=? AND login_addr=?",d.Config.Coin, login)
+	rows, err := conn.Query("SELECT login_addr,payout_limit FROM miner_info WHERE coin=? AND login_addr=?",d.Config.Coin, login)
 	if err != nil {
-		return true, err
+		return true, 0, err
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		return true, nil
+		var (
+			login_addr,payout_limit string
+		)
+
+		err := rows.Scan(&login_addr, &payout_limit)
+		if err != nil {
+			log.Printf("mysql ChoiceSubMiner:rows.Scan() error: %v", err)
+			return false, 0, nil
+		}
+
+		settingPayout, _ := strconv.ParseInt(payout_limit, 10, 64)
+		return true, settingPayout, nil
 	}
-	return false, nil
+	return false, 0, nil
 }
 
 func (d *Database) ChoiceSubMiner(login string) ([]string, map[string]int){
@@ -1870,10 +1881,10 @@ func (d *Database) UpdatePayoutLimit(login string,dgcValue string) bool {
 	return true
 }
 
-func (d *Database) CreateAccount(user string,pass []byte) bool {
+func (d *Database) CreateAccount(user string,pass []byte, access string) bool {
 	conn := d.Conn
 	//The location (d.Config.Coin) does not need to be set.
-	ret,err := conn.Exec("INSERT INTO account(id,password) VALUES (?,?)", user, pass)
+	ret,err := conn.Exec("INSERT INTO account(id,password,access) VALUES (?,?,?)", user, pass, access)
 	if err != nil {
 		log.Printf("mysql CreateAccount:Exec() error: %v", err)
 		return false
@@ -1886,6 +1897,41 @@ func (d *Database) CreateAccount(user string,pass []byte) bool {
 	return true
 }
 
+func (d *Database) ChangeAccountAccess(user string, access string) bool {
+	conn := d.Conn
+	//The location (d.Config.Coin) does not need to be set.
+	_,err := conn.Exec("UPDATE account SET access=? WHERE id=? ", access, user)
+	if err != nil {
+		log.Printf("mysql ChangeAccountAccess:Exec() error: %v", err)
+		return false
+	}
+
+	return true
+}
+
+func (d *Database) ChangeAccountPassword(user string, pass []byte) bool {
+	conn := d.Conn
+	//The location (d.Config.Coin) does not need to be set.
+	_,err := conn.Exec("UPDATE account SET password=? WHERE id=? ", pass, user)
+	if err != nil {
+		log.Printf("mysql ChangeAccountPassword:Exec() error: %v", err)
+		return false
+	}
+
+	return true
+}
+
+func (d *Database) DeleteAccount(user string) bool {
+	conn := d.Conn
+
+	_,err := conn.Exec("DELETE FROM account WHERE id=? ", user)
+	if err != nil {
+		log.Printf("mysql DeleteAccount:Exec() error: %v", err)
+		return false
+	}
+
+	return true
+}
 
 func (d *Database) GetAccountPassword(id string) (string, string, error) {
 	conn := d.Conn
@@ -1909,4 +1955,37 @@ func (d *Database) GetAccountPassword(id string) (string, string, error) {
 	}
 
 	return "", "", nil
+}
+
+func (d *Database) GetAccountList() ([]*types.UserInfo, error) {
+	conn := d.Conn
+	rows, err := conn.Query("SELECT id,access FROM account")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	var (
+		result []*types.UserInfo
+	)
+
+
+	for rows.Next() {
+		var (
+			id, access string
+		)
+		err := rows.Scan(&id, &access)
+		if err != nil {
+			log.Printf("mysql GetAccountPassword:rows.Scan() error: %v", err)
+			return nil, err
+		}
+
+		userInfo := &types.UserInfo{
+			Username: id,
+			Access:   access,
+		}
+		result = append(result, userInfo)
+	}
+
+	return result, nil
 }

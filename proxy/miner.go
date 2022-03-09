@@ -49,6 +49,7 @@ func (s *ProxyServer) processShare(login, id, ip string, t *BlockTemplate, param
 
 	subLogin := login
 	subLogin , count := s.ChoiceSubLogin(login, ok, subLogin)
+	subLogin = strings.ToLower(subLogin)	// Login can be sent due to incorrect case
 
 	println("subLogin" ,subLogin, "count",count)
 
@@ -75,7 +76,7 @@ func (s *ProxyServer) processShare(login, id, ip string, t *BlockTemplate, param
 			s.db.WriteBlock(subLogin, id, params, shareDiff, h.diff.Int64(), h.height, s.hashrateExpiration, stratumHostname)
 
 			//log.Printf("[test code] Block rejected at height %v for %v", h.height, t.Header , params[0])
-			exist, err = s.backend.WriteBlock(subLogin, id, params, shareDiff, h.diff.Int64(), h.height, s.hashrateExpiration, stratumHostname, count)
+			exist, err = s.backend.WriteBlock(subLogin, login, id, params, shareDiff, h.diff.Int64(), h.height, s.hashrateExpiration, stratumHostname, count)
 			if exist {
 				return true, false
 			}
@@ -102,7 +103,7 @@ func (s *ProxyServer) processShare(login, id, ip string, t *BlockTemplate, param
 			return true, false
 		}
 
-		exist, err = s.backend.WriteShare(subLogin, id, params, shareDiff, h.height, s.hashrateExpiration, stratumHostname, count)
+		exist, err = s.backend.WriteShare(subLogin, login, id, params, shareDiff, h.height, s.hashrateExpiration, stratumHostname, count)
 		if exist {
 			return true, false
 		}

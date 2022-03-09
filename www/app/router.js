@@ -17,6 +17,7 @@ Router.map(function() {
     this.route('pending');
   });
 
+  this.route('index', { path: '/'});
   this.route('help');
   this.route('payments');
   this.route('miners');
@@ -25,7 +26,7 @@ Router.map(function() {
   this.route('setting', function() {
     this.route('idbound');
     this.route('ipbound');
-    this.route('account');
+    this.route('register');
   });
 });
 

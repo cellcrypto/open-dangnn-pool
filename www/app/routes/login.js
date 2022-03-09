@@ -3,6 +3,7 @@ import Ember from 'ember';
 export default Ember.Route.extend({
   auth: Ember.inject.service('auth'),
   controller: Ember.inject.controller('login'),
+  application: Ember.inject.controller('application'),
 
   beforeModel() {
     this.get('auth').clearIdToken();

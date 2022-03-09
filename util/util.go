@@ -18,9 +18,17 @@ var Shannon = math.BigPow(10, 9)
 var pow256 = math.BigPow(2, 256)
 var addressPattern = regexp.MustCompile("^0x[0-9a-fA-F]{40}$")
 var zeroHash = regexp.MustCompile("^0?x?0+$")
+var usernamePattern = regexp.MustCompile("^[0-9a-zA-Z-_]{3,20}$")
 
 func IsValidHexAddress(s string) bool {
 	if IsZeroHash(s) || !addressPattern.MatchString(s) {
+		return false
+	}
+	return true
+}
+
+func IsValidUsername(s string) bool {
+	if len(s) == 0 || !usernamePattern.MatchString(s) {
 		return false
 	}
 	return true

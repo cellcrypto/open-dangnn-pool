@@ -17,6 +17,11 @@
         </div>
         {{/if}}
         <div style="display: block;"><i class="fa fa-money"></i> Total Paid: <span>{{format-balance model.stats.paid}}</span></div>
+        {{#if compare '===' 0}}
+          <div style="display: block;"><i class="fa fa-gears"></i> Setting Paid Balance: <span>0</span></div>
+        {{else}}
+          <div style="display: block;"><i class="fa fa-gears"></i> Setting Paid Balance: <span>{{format-number setPayout}}</span></div>
+        {{/if}}
       </div>
       <div class="col-md-4 stats">
         {{#if model.stats.lastShare}}

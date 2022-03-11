@@ -151,6 +151,11 @@ export default Ember.Controller.extend({
       return this.get('model.poolBalanceOnce')/10000000;
     }
   }),
+  setPayout: Ember.computed({
+    get() {
+      return this.get('model.setPayout')/10000000;
+    }
+  }),
   earnPerDay: Ember.computed('model', {
     get() {
       return 24 * 60 * 60 / this.get('config').BlockTime * this.get('poolBalanceByOnce') * this.getWithDefault('model.hashrate') / this.get('model.hashrateTotal');

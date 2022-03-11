@@ -51,8 +51,10 @@ type ApiServer struct {
 	hashrateLargeWindow time.Duration
 	stats               atomic.Value
 	miners              map[string]*Entry
+	apiMiners           map[string]*Entry
 	db					*mysql.Database
 	minersMu            sync.RWMutex
+	apiMinersMu            sync.RWMutex
 	statsIntv           time.Duration
 	minerPoolTimeout	time.Duration
 	minerPoolChartIntv	int64
@@ -80,6 +82,7 @@ func NewApiServer(cfg *ApiConfig, coin string, name string, backend *redis.Redis
 		hashrateWindow:      hashrateWindow,
 		hashrateLargeWindow: hashrateLargeWindow,
 		miners:              make(map[string]*Entry),
+		apiMiners:           make(map[string]*Entry),
 		db:					db,
 	}
 }
@@ -158,7 +161,7 @@ func (s *ApiServer) Start() {
 						reportedHash, _ := s.backend.GetAllReportedtHashrate(miner.Addr)
 
 						online, _, totalHashrate , currentHashrate := s.backend.CollectWorkersStatsEx(s.hashrateWindow, s.hashrateLargeWindow, miner.Addr)
-						// stats, _ := s.backend.CollectWorkersStats(s.hashrateWindow, s.hashrateLargeWindow, miner.Addr)
+						// stats, _ := s.backend.CollectWorkersAllStats(s.hashrateWindow, s.hashrateLargeWindow, miner.Addr)
 						s.collectMinerCharts(miner.Addr, currentHashrate, totalHashrate, online, int64(miner.Share), reportedHash)
 					}
 				}
@@ -560,7 +563,7 @@ func (s *ApiServer) AccountIndex(w http.ResponseWriter, r *http.Request) {
 	cacheIntv := int64(s.statsIntv / time.Millisecond)
 	// Refresh stats if stale
 	if !ok || reply.updatedAt < now-cacheIntv {
-		exist, _, err := s.db.IsMinerExists(login)
+		exist, setPayout, err := s.db.IsMinerExists(login)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			log.Printf("Failed to fetch stats from backend: %v", err)
@@ -579,7 +582,7 @@ func (s *ApiServer) AccountIndex(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		reportedHash, _ := s.backend.GetReportedtHashrate(login)
-		workers, err := s.backend.CollectWorkersStats(s.hashrateWindow, s.hashrateLargeWindow, login, reportedHash)
+		workers, err := s.backend.CollectWorkersAllStats(s.hashrateWindow, s.hashrateLargeWindow, login, reportedHash)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			log.Printf("Failed to fetch stats from backend: %v", err)
@@ -590,6 +593,7 @@ func (s *ApiServer) AccountIndex(w http.ResponseWriter, r *http.Request) {
 			stats[key] = value
 		}
 		stats["pageSize"] = s.config.Payments
+		stats["setPayout"] = setPayout
 		stats["minerCharts"], err = s.db.GetMinerCharts(s.config.MinerChartsNum, s.minerPoolChartIntv, login, ts)
 		//stats["minerCharts"], err = s.backend.GetMinerCharts(s.config.MinerChartsNum, login)
 		//stats["paymentCharts"], err = s.backend.GetPaymentCharts(login)
@@ -619,13 +623,16 @@ func (s *ApiServer) AccountExIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 
 	login := strings.ToLower(mux.Vars(r)["login"])
-	s.minersMu.Lock()
-	defer s.minersMu.Unlock()
 
-	reply, ok := s.miners[login]
+	nowtime := time.Now()
 	now := util.MakeTimestamp()
 	ts := now / 1000
 	cacheIntv := int64(s.statsIntv / time.Millisecond)
+
+	s.apiMinersMu.Lock()
+	defer s.apiMinersMu.Unlock()
+	reply, ok := s.apiMiners[login]
+
 	// Refresh stats if stale
 	if !ok || reply.updatedAt < now-cacheIntv {
 		exist, setPayout, err := s.db.IsMinerExists(login)
@@ -671,8 +678,10 @@ func (s *ApiServer) AccountExIndex(w http.ResponseWriter, r *http.Request) {
 		}
 
 		reply = &Entry{stats: stats, updatedAt: now}
-		s.miners[login] = reply
+		s.apiMiners[login] = reply
 	}
+
+	fmt.Printf("test time: %v\n", time.Since(nowtime))
 
 	w.WriteHeader(http.StatusOK)
 	err := json.NewEncoder(w).Encode(reply.stats)
@@ -1551,7 +1560,7 @@ func (s *ApiServer) GetAccountListIndex(w http.ResponseWriter, r *http.Request) 
 //			log.Printf("Failed to fetch stats from backend: %v", err)
 //			return
 //		}
-//		workers, err := s.backend.CollectWorkersStats(s.hashrateWindow, s.hashrateLargeWindow, login)
+//		workers, err := s.backend.CollectWorkersAllStats(s.hashrateWindow, s.hashrateLargeWindow, login)
 //		if err != nil {
 //			w.WriteHeader(http.StatusInternalServerError)
 //			log.Printf("Failed to fetch stats from backend: %v", err)

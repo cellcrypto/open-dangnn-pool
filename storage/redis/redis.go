@@ -908,7 +908,7 @@ func (r *RedisClient) CollectStats(smallWindow time.Duration, maxBlocks, maxPaym
 	return stats, nil
 }
 
-func (r *RedisClient) CollectWorkersStats(sWindow, lWindow time.Duration, login string, mapReportRate map[string]int64) (map[string]interface{}, error) {
+func (r *RedisClient) CollectWorkersAllStats(sWindow, lWindow time.Duration, login string, mapReportRate map[string]int64) (map[string]interface{}, error) {
 	smallWindow := int64(sWindow / time.Second)
 	largeWindow := int64(lWindow / time.Second)
 	stats := make(map[string]interface{})
@@ -1003,10 +1003,10 @@ func (r *RedisClient) CollectWorkersStats(sWindow, lWindow time.Duration, login 
 	return stats, nil
 }
 
-
-func (r *RedisClient) CollectWorkersStatsEx(sWindow, lWindow time.Duration, login string) (int64, int64, int64, int64, ) {
+func (r *RedisClient) CollectWorkersStats(sWindow, lWindow time.Duration, login string, mapReportRate map[string]int64) (map[string]interface{}, error) {
 	smallWindow := int64(sWindow / time.Second)
 	largeWindow := int64(lWindow / time.Second)
+	stats := make(map[string]interface{})
 
 	tx := r.client.Multi()
 	defer tx.Close()
@@ -1020,14 +1020,14 @@ func (r *RedisClient) CollectWorkersStatsEx(sWindow, lWindow time.Duration, logi
 	})
 
 	if err != nil {
-		return 0, 0, 0, 0
+		return nil, err
 	}
 
 	totalHashrate := int64(0)
 	currentHashrate := int64(0)
 	online := int64(0)
 	offline := int64(0)
-	workers := convertWorkersStats(smallWindow, cmds[1].(*redis.ZSliceCmd), false)
+	workers := convertWorkersStats(smallWindow, cmds[1].(*redis.ZSliceCmd), true)
 
 	for id, worker := range workers {
 		timeOnline := now - worker.startedAt
@@ -1054,9 +1054,79 @@ func (r *RedisClient) CollectWorkersStatsEx(sWindow, lWindow time.Duration, logi
 			online++
 		}
 
+		currentHashrate += worker.HR * worker.Size
+		totalHashrate += worker.TotalHR * worker.Size
+		if mapReportRate != nil {
+			if reported , ok := mapReportRate[id]; ok {
+				worker.Reported = reported
+			}
+		}
+		workers[id] = worker
+	}
+	stats["workers"] = workers
+	stats["workersTotal"] = len(workers)
+	stats["workersOnline"] = online
+	stats["workersOffline"] = offline
+	stats["hashrate"] = totalHashrate
+	stats["currentHashrate"] = currentHashrate
+
+	return stats, nil
+}
+
+
+func (r *RedisClient) CollectWorkersStatsEx(sWindow, lWindow time.Duration, login string) (int64, int64, int64, int64, ) {
+	smallWindow := int64(sWindow / time.Second)
+	largeWindow := int64(lWindow / time.Second)
+
+	tx := r.client.Multi()
+	defer tx.Close()
+
+	now := util.MakeTimestamp() / 1000
+
+	cmds, err := tx.Exec(func() error {
+		tx.ZRemRangeByScore(r.formatKey("hashrate", login), "-inf", fmt.Sprint("(", now-largeWindow))
+		tx.ZRangeWithScores(r.formatKey("hashrate", login), 0, -1)
+		return nil
+	})
+
+	if err != nil {
+		return 0, 0, 0, 0
+	}
+
+	totalHashrate := int64(0)
+	currentHashrate := int64(0)
+	online := int64(0)
+	offline := int64(0)
+	workers := convertWorkersStats(smallWindow, cmds[1].(*redis.ZSliceCmd), false)
+
+	for _, worker := range workers {
+		timeOnline := now - worker.startedAt
+		if timeOnline < 600 {
+			timeOnline = 600
+		}
+
+		boundary := timeOnline
+		if timeOnline >= smallWindow {
+			boundary = smallWindow
+		}
+		worker.HR = worker.HR / boundary
+
+		boundary = timeOnline
+		if timeOnline >= largeWindow {
+			boundary = largeWindow
+		}
+		worker.TotalHR = worker.TotalHR / boundary
+
+		if worker.LastBeat < (now - smallWindow/2) {
+			worker.Offline = true
+			offline++
+		} else {
+			online++
+		}
+
 		currentHashrate += worker.HR
 		totalHashrate += worker.TotalHR
-		workers[id] = worker
+		//workers[id] = worker
 	}
 
 	return online, offline, totalHashrate , currentHashrate

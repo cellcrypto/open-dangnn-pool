@@ -18,9 +18,11 @@
         {{/if}}
         <div style="display: block;"><i class="fa fa-money"></i> Total Paid: <span>{{format-balance model.stats.paid}}</span></div>
         {{#if compare '===' 0}}
-          <div style="display: block;"><i class="fa fa-gears"></i> Setting Paid Balance: <span>0</span></div>
+          <div style="display: block;"><i class="fa fa-gears"></i> Setting Paid Balance: <span>0</span><br>
+          <small>settings range from {{format-balance model.minPayout}} to {{format-balance model.maxPayout}}</small></div>
         {{else}}
-          <div style="display: block;"><i class="fa fa-gears"></i> Setting Paid Balance: <span>{{format-number setPayout}}</span></div>
+          <div style="display: block;"><i class="fa fa-gears"></i> Setting Paid Balance: <span>{{format-number setPayout}}</span><br>
+          <small>settings range from {{format-balance model.minPayout}} to {{format-balance model.maxPayout}}</small></div>
         {{/if}}
       </div>
       <div class="col-md-4 stats">

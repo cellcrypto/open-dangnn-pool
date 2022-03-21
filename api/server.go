@@ -574,7 +574,6 @@ func (s *ApiServer) AccountIndex(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-
 		stats, err := s.backend.GetMinerStats(login, s.config.Payments)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -593,6 +592,8 @@ func (s *ApiServer) AccountIndex(w http.ResponseWriter, r *http.Request) {
 			stats[key] = value
 		}
 		stats["pageSize"] = s.config.Payments
+		stats["minPayout"] = s.config.Threshold
+		stats["maxPayout"] = s.config.Threshold * 100
 		stats["setPayout"] = setPayout
 		stats["minerCharts"], err = s.db.GetMinerCharts(s.config.MinerChartsNum, s.minerPoolChartIntv, login, ts)
 		//stats["minerCharts"], err = s.backend.GetMinerCharts(s.config.MinerChartsNum, login)

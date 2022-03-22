@@ -123,7 +123,7 @@ func main() {
 	})
 
 	// logger is pooling
-	logger = plogger.New(db, cfg.Coin)
+	logger = plogger.New(db, cfg.Coin, cfg.Mysql.LogTableName)
 
 	if cfg.Proxy.Enabled {
 		go startProxy()

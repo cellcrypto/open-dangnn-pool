@@ -94,8 +94,8 @@
 		"password": "",
 		"poolSize": 10,
 		"port": 3308,
-		"database": "pool"
-
+		"database": "pool",
+		"LogTableName": "log"
 	},
 
 	"unlocker": {

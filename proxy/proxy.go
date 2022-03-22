@@ -2,6 +2,8 @@ package proxy
 
 import (
 	"encoding/json"
+	"github.com/cellcrypto/open-dangnn-pool/hook"
+	"github.com/cellcrypto/open-dangnn-pool/util/plogger"
 	"io"
 	"log"
 	"net"
@@ -94,6 +96,16 @@ func NewProxy(cfg *Config, backend *redis.RedisClient, db *mysql.Database) *Prox
 
 	stateUpdateIntv := util.MustParseDuration(cfg.Proxy.StateUpdateInterval)
 	stateUpdateTimer := time.NewTimer(stateUpdateIntv)
+
+	quit := make(chan struct{})
+	hooks := make(chan struct{})
+
+	plogger.InsertLog("START PROXY SERVER", plogger.LogTypeSystem, plogger.LogErrorNothing, 0, 0, "", "")
+	hook.RegistryHook("proxy.go", func(name string) {
+		plogger.InsertLog("SHUTDOWN PROXY SERVER", plogger.LogTypeSystem, plogger.LogErrorNothing, 0, 0, "", "")
+		close(quit)
+		<- hooks
+	})
 
 	go func() {
 		for {

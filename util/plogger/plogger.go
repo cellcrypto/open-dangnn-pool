@@ -71,7 +71,7 @@ type LogDB interface {
 	InsertSqlLog(sql *string)
 }
 
-func New(db LogDB, where string) *Logger {
+func New(db LogDB, where string, logTableName string) *Logger {
 
 
 	// create job channel
@@ -83,7 +83,7 @@ func New(db LogDB, where string) *Logger {
 		maxWorkers:   maxWorkers,
 		maxQueueSize: maxQueueSize,
 		where : where,
-		logTableName: "log_21_11",
+		logTableName: logTableName,
 		// logData: make([]LogData,maxWorkers),
 	}
 

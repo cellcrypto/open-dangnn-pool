@@ -3,6 +3,8 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cellcrypto/open-dangnn-pool/hook"
+	"github.com/cellcrypto/open-dangnn-pool/util/plogger"
 	"log"
 	"net/http"
 	"sort"
@@ -93,6 +95,16 @@ func (s *ApiServer) Start() {
 	} else {
 		log.Printf("Starting API on %v", s.config.Listen)
 	}
+
+	quit := make(chan struct{})
+	hooks := make(chan struct{})
+
+	plogger.InsertLog("START API SERVER", plogger.LogTypeSystem, plogger.LogErrorNothing, 0, 0, "", "")
+	hook.RegistryHook("server.go", func(name string) {
+		plogger.InsertLog("SHUTDOWN API SERVER", plogger.LogTypeSystem, plogger.LogErrorNothing, 0, 0, "", "")
+		close(quit)
+		<- hooks
+	})
 
 	s.statsIntv = util.MustParseDuration(s.config.StatsCollectInterval)
 	statsTimer := time.NewTimer(s.statsIntv)

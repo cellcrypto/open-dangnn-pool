@@ -27,6 +27,7 @@ type Config struct {
 
 	Coin 	string  `json:"coin"`
 	Threshold int64 `json:"threshold"`
+	LogTableName string `json:"logTableName"`
 }
 
 type Database struct {

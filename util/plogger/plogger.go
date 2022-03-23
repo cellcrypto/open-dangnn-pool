@@ -40,7 +40,7 @@ type Logger struct {
 const (
 	maxQueueSize = 20000
 	maxWorkers = 2
-	insertSize = 10000
+	insertSize = 5000
 )
 
 const (
@@ -175,6 +175,11 @@ func (l *Logger) Save(id int,insertSize int) {
 }
 
 func (l *Logger) Close() {
+	// Save all log messages.
+	for m := range l.MsgQueue {
+		l.doWork(0, m)
+	}
+
 	for i := 1; i <= l.maxWorkers; i++ {
 		l.Save(i, 0)
 	}

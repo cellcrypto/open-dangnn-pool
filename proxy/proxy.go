@@ -130,6 +130,9 @@ func NewProxy(cfg *Config, backend *redis.RedisClient, db *mysql.Database) *Prox
 	go func() {
 		for {
 			select {
+			case <-quit:
+				hooks <- struct{}{}
+				return
 			case <-stateUpdateTimer.C:
 				t := proxy.currentBlockTemplate()
 				if t != nil {

@@ -155,6 +155,9 @@ func (s *ApiServer) Start() {
 	go func() {
 		for {
 			select {
+			case <-quit:
+				hooks <- struct{}{}
+				return
 			case <-poolChartTimer.C:
 				s.collectPoolCharts()
 

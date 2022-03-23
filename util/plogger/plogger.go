@@ -176,12 +176,15 @@ func (l *Logger) Save(id int,insertSize int) {
 
 func (l *Logger) Close() {
 	// Save all log messages.
-	for m := range l.MsgQueue {
-		l.doWork(0, m)
-	}
-
-	for i := 1; i <= l.maxWorkers; i++ {
-		l.Save(i, 0)
+	Loop:
+	for {
+		select {
+			case m := <- l.MsgQueue:
+				l.doWork(0, m)
+			default:
+				l.Save(0, 0)
+				break Loop
+		}
 	}
 }
 

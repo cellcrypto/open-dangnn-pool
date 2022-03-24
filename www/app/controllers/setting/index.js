@@ -28,10 +28,13 @@ export default Ember.Controller.extend({
       if (!event.target.value) {
         this.get('errors').pushObject({ message: `${event.target.name} is required`});
       } else {
-        var result = event.target.value.match(/\b[0-9A-Fa-f]{1,40}\b/g);
-        console.log(result)
+        var result = event.target.value.match(/\b0x[0-9A-Fa-f]{40}|[0-9A-Fa-f]{40}\b/g);
         if (result) {
-          this.devid = event.target.value;
+          if (event.target.name == 'devid') {
+            this.devid = event.target.value;
+          } else {
+            this.subid = event.target.value;
+          }
         } else {
           this.get('errors').pushObject({ message: `${event.target.name} is not values`});
         }

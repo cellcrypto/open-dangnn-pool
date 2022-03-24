@@ -936,7 +936,7 @@ type DevSubList struct {
 	DevId 	string `json:"devid"`
 	SubId 	string `json:"subid"`
 	Amount  string `json:"amount"`
-	allowId bool `json:"allowid"`
+	AllowId bool `json:"allowid"`
 }
 
 func (s *ApiServer) InboundListIndex(w http.ResponseWriter, r *http.Request) {
@@ -1238,7 +1238,7 @@ func (s *ApiServer) SaveSubIdIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	saveFlag := s.db.SaveSubIdIndex(lowerDevId, lowerSubId, addCount)
-	if saveFlag && devSubList.allowId {
+	if saveFlag && devSubList.AllowId {
 		// Allow ID
 		s.db.SaveIdInbound(lowerDevId,"allow")
 	}

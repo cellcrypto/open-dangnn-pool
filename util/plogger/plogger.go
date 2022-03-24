@@ -176,6 +176,7 @@ func (l *Logger) Save(id int,insertSize int) {
 
 func (l *Logger) Close() {
 	// Save all log messages.
+	time.Sleep(1*time.Second)
 	Loop:
 	for {
 		select {

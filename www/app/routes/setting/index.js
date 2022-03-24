@@ -46,7 +46,7 @@ export default Ember.Route.extend({
               devid: devid,
               subid: subid,
               amount: amount,
-              allowId: allowid,
+              allowid: allowid,
             })
           }).then(function(data) {
             return data;

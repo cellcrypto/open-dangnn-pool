@@ -22,13 +22,13 @@
             {{input value=devid change=(action "required") placeholder="0x..." name="devid"}}
             <br>
             <label for="subid">Sub ID:  </label>
-            {{input value=subid change=(action "required2") placeholder="0x..." name="subid"}}
+            {{input value=subid change=(action "required") placeholder="0x..." name="subid"}}
             <br>
             <label for="spinner">Add Amount:</label>
-            {{numeric-input value=amount id="spinner" maxlength="8"}}
+            {{numeric-input value=amount id="spinner" maxlength="2"}}
             <br>
             <label for="checkbox">Add Inbound ID:</label>
-            {{input type="checkbox" checked=allowid}}
+            {{input type="checkbox"  value=allowid checked=allowid}}
 
           </div>
         </div>

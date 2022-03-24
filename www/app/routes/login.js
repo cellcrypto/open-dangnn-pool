@@ -5,9 +5,9 @@ export default Ember.Route.extend({
   controller: Ember.inject.controller('login'),
   application: Ember.inject.controller('application'),
 
-  beforeModel() {
-    this.get('auth').clearIdToken();
-  },
+  // beforeModel() {
+  //   this.get('auth').clearIdToken();
+  // },
 
   actions: {
     authenticate() {

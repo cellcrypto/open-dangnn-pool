@@ -222,7 +222,7 @@ func (s *ApiServer) authenticationMiddleware (next http.Handler) http.Handler {
 		requestURL := strings.Split(r.RequestURI,"/")
 		if len(requestURL) > 1 {
 			switch requestURL[1] {
-			case "signin","token":
+			case "signin","token","health":
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -369,7 +369,7 @@ func (s *ApiServer) listen() {
 	r.HandleFunc("/api/changepass", s.ChangePasswordIndex)
 	r.HandleFunc("/api/delaccount", s.DelAccounIndex)
 
-	r.HandleFunc("/test", s.TestIndex)
+	r.HandleFunc("/health", s.Health)
 
 	c := cors.New(cors.Options{
 		AllowedOrigins: []string{"*"},
@@ -548,10 +548,10 @@ func (s *ApiServer) PaymentsIndex(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *ApiServer) TestIndex(w http.ResponseWriter, r *http.Request) {
-	expiration := time.Now().Add(365 * 24 * time.Hour)
-	cookie    :=    http.Cookie{Name: "csrftsfdasoken",Value:"abcd",Expires:expiration}
-	http.SetCookie(w, &cookie)
+func (s *ApiServer) Health(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
 	//http.SetCookie(w, &http.Cookie{
 	//	Name: "name of cookie",
 	//	Value: "value of cookie",
@@ -560,7 +560,7 @@ func (s *ApiServer) TestIndex(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	err := json.NewEncoder(w).Encode(map[string]string {
-		"tesst":"testddd",
+		"status":"ok",
 	})
 	if err != nil {
 		log.Println("Error serializing API response: ", err)

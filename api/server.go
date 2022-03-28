@@ -19,6 +19,7 @@ import (
 	"github.com/cellcrypto/open-dangnn-pool/util"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
+	"github.com/rs/cors"
 )
 
 type ApiConfig struct {
@@ -370,7 +371,10 @@ func (s *ApiServer) listen() {
 
 	r.HandleFunc("/test", s.TestIndex)
 
-
+	c := cors.New(cors.Options{
+		AllowedOrigins: []string{"*"},
+		AllowCredentials: true,
+	})
 
 	//r.HandleFunc("/api/accounts/{login:0x[0-9a-fA-F]{40}}/{personal:0x[0-9a-fA-F]{40}}", s.AccountIndexEx)
 	r.NotFoundHandler = http.HandlerFunc(notFound)
@@ -401,7 +405,7 @@ func (s *ApiServer) listen() {
 		return nil
 	})
 
-	err = http.ListenAndServe(s.config.Listen, r)
+	err = http.ListenAndServe(s.config.Listen, c.Handler(r))
 	if err != nil {
 		log.Fatalf("Failed to start API: %v", err)
 	}
@@ -1231,7 +1235,7 @@ func (s *ApiServer) SaveSubIdIndex(w http.ResponseWriter, r *http.Request) {
 	amount, _ := strconv.ParseInt(devSubList.Amount,10,64)
 	addCount += amount
 	devTotalCount += amount
-	if devTotalCount > 18 {
+	if devTotalCount > 18 || devTotalCount < 1{
 		log.Printf("Exceeding max dev count: %v",devTotalCount)
 		s.ErrorWrite(w, "Exceeding max dev count")
 		return

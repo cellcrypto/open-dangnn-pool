@@ -18,6 +18,7 @@ require (
 	github.com/btcsuite/btcd v0.20.1-beta // indirect
 	github.com/garyburd/redigo v1.6.2 // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
+	github.com/rs/cors v1.8.2 // indirect
 	github.com/yvasiyarov/go-metrics v0.0.0-20150112132944-c25f46c4b940 // indirect
 	github.com/yvasiyarov/newrelic_platform_go v0.0.0-20160601141957-9c099fbc30e9 // indirect
 	golang.org/x/net v0.0.0-20210226172049-e18ecbb05110 // indirect

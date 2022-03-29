@@ -52,6 +52,7 @@
 		"enabled": true,
 		"purgeOnly": false,
 		"purgeInterval": "10m",
+		"AllowedOrigins": ["*"],
 		"listen": "0.0.0.0:8080",
 		"MinerChartsNum": 72,
 		"PoolChartsNum": 72,

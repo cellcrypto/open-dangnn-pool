@@ -1504,16 +1504,16 @@ func (d *Database) IsMinerExists(login string) (bool,int64,error) {
 
 	for rows.Next() {
 		var (
-			login_addr,payout_limit string
+			loginAddr, payoutLimit string
 		)
 
-		err := rows.Scan(&login_addr, &payout_limit)
+		err := rows.Scan(&loginAddr, &payoutLimit)
 		if err != nil {
 			log.Printf("mysql ChoiceSubMiner:rows.Scan() error: %v", err)
 			return false, 0, nil
 		}
 
-		settingPayout, _ := strconv.ParseInt(payout_limit, 10, 64)
+		settingPayout, _ := strconv.ParseInt(payoutLimit, 10, 64)
 		return true, settingPayout, nil
 	}
 	return false, 0, nil

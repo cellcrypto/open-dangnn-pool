@@ -23,28 +23,29 @@ import (
 )
 
 type ApiConfig struct {
-	Enabled              bool   `json:"enabled"`
-	Listen               string `json:"listen"`
-	PoolChartsNum        int64  `json:"poolChartsNum"`
-	MinerChartsNum       int64  `json:"minerChartsNum"`
-	PoolChartInterval    string `json:"poolChartInterval"`
+	Enabled                 bool   `json:"enabled"`
+	Listen                  string `json:"listen"`
+	PoolChartsNum           int64  `json:"poolChartsNum"`
+	MinerChartsNum          int64  `json:"minerChartsNum"`
+	PoolChartInterval       string `json:"poolChartInterval"`
 	MinerChartCheckInterval string `json:"minerChartCheckInterval"`
-	MinerChartInterval   string `json:"minerChartInterval"`
-	MinerPoolTimeout	 string `json:"minerPoolTimeout"`
-	StatsCollectInterval string `json:"statsCollectInterval"`
-	HashrateWindow       string `json:"hashrateWindow"`
-	HashrateLargeWindow  string `json:"hashrateLargeWindow"`
-	LuckWindow           []int  `json:"luckWindow"`
-	Payments             int64  `json:"payments"`
-	Blocks               int64  `json:"blocks"`
-	PurgeOnly            bool   `json:"purgeOnly"`
-	PurgeInterval        string `json:"purgeInterval"`
-	Coin				string
-	Name 				string
-	Depth        int64
+	MinerChartInterval      string `json:"minerChartInterval"`
+	MinerPoolTimeout        string `json:"minerPoolTimeout"`
+	StatsCollectInterval    string `json:"statsCollectInterval"`
+	HashrateWindow          string `json:"hashrateWindow"`
+	HashrateLargeWindow     string `json:"hashrateLargeWindow"`
+	LuckWindow              []int  `json:"luckWindow"`
+	Payments                int64  `json:"payments"`
+	Blocks                  int64  `json:"blocks"`
+	PurgeOnly               bool   `json:"purgeOnly"`
+	PurgeInterval           string `json:"purgeInterval"`
+	AllowedOrigins 			[]string `json:"AllowedOrigins"`
+	Coin                    string
+	Name                    string
+	Depth                   int64
 	// In Shannon
-	Threshold 			int64 `json:"threshold"`
-	AccessSecret 		string `json:"AccessSecret"`
+	Threshold      int64  `json:"threshold"`
+	AccessSecret   string `json:"AccessSecret"`
 }
 
 type ApiServer struct {
@@ -61,6 +62,7 @@ type ApiServer struct {
 	statsIntv           time.Duration
 	minerPoolTimeout	time.Duration
 	minerPoolChartIntv	int64
+	allowedOrigins		[]string
 
 	//poolChartIntv       time.Duration
 	//minerChartIntv      time.Duration
@@ -228,6 +230,7 @@ func (s *ApiServer) authenticationMiddleware (next http.Handler) http.Handler {
 			}
 			passed, errStr := s.CheckJwtToken(r, requestURL[1])
 			if !passed {
+				fmt.Println("CheckJwtToken Error:",errStr)
 				s.ServerError(w, r, errStr)
 				return
 			}
@@ -371,10 +374,20 @@ func (s *ApiServer) listen() {
 
 	r.HandleFunc("/health", s.Health)
 
-	c := cors.New(cors.Options{
-		AllowedOrigins: []string{"*"},
-		AllowCredentials: true,
-	})
+	var c *cors.Cors
+	s.allowedOrigins = make([]string, len(s.config.AllowedOrigins))
+	if len(s.config.AllowedOrigins) > 0 {
+		for i, v := range s.config.AllowedOrigins {
+			s.allowedOrigins[i] = v
+		}
+
+		c = cors.New(cors.Options{
+			AllowedOrigins: s.allowedOrigins,
+			AllowCredentials: true,
+			AllowedHeaders: []string{"access_token"},
+			AllowedMethods: []string{"get","post","options"},
+		})
+	}
 
 	//r.HandleFunc("/api/accounts/{login:0x[0-9a-fA-F]{40}}/{personal:0x[0-9a-fA-F]{40}}", s.AccountIndexEx)
 	r.NotFoundHandler = http.HandlerFunc(notFound)
@@ -405,7 +418,12 @@ func (s *ApiServer) listen() {
 		return nil
 	})
 
-	err = http.ListenAndServe(s.config.Listen, c.Handler(r))
+	if c != nil {
+		err = http.ListenAndServe(s.config.Listen, c.Handler(r))
+	} else {
+		err = http.ListenAndServe(s.config.Listen, r)
+	}
+
 	if err != nil {
 		log.Fatalf("Failed to start API: %v", err)
 	}

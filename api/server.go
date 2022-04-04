@@ -679,7 +679,7 @@ func (s *ApiServer) AccountExIndex(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !exist {
-			s.WirteResponseData(w, http.StatusNotFound, "non-existent minor")
+			s.WirteResponseData(w, http.StatusNotFound, "non-existent minor:" + login)
 			return
 		}
 
@@ -698,6 +698,9 @@ func (s *ApiServer) AccountExIndex(w http.ResponseWriter, r *http.Request) {
 
 		for key, value := range workers {
 			stats[key] = value
+		}
+		if setPayout == 0 {
+			setPayout = s.config.Threshold
 		}
 		stats["pageSize"] = s.config.Payments
 		stats["minPayout"] = s.config.Threshold

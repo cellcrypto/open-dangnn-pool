@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"github.com/cellcrypto/open-dangnn-pool/util"
 	"github.com/ethereum/ethash"
 	"github.com/ethereum/go-ethereum/common"
 	"log"
@@ -115,47 +114,24 @@ func (s *ProxyServer) processShare(login, id, ip string, t *BlockTemplate, param
 }
 
 func (s *ProxyServer) ChoiceSubLogin(login string, ok bool, subLogin string) (string,int) {
-
 	var resultCount = 1
 
 	s.subMinerMu.RLock()
 	minerSubInfo, ok := s.subMiner[login]
 	s.subMinerMu.RUnlock()
 
-	if !ok || minerSubInfo.timeout < util.MakeTimestamp() {
-		// separation work
-		subLogins, subLoginMap := s.db.ChoiceSubMiner(login)
-		if subLogins == nil {
-			return subLogin, resultCount
-		}
-
-		s.subMinerMu.Lock()
-		if minerSubInfo == nil {
-			minerSubInfo = &MinerSubInfo{
-				login:     login,
-				choice:    0,
-				timeout:   util.MakeTimestamp() + 60*10*1000,
-				subLogins: subLogins,
-				subLoginMap: subLoginMap,
-			}
-		} else {
-			minerSubInfo.subLogins = subLogins
-			minerSubInfo.subLoginMap = subLoginMap
-			minerSubInfo.timeout = util.MakeTimestamp() + 60*10*1000
-		}
-		s.subMiner[login] = minerSubInfo
-		s.subMinerMu.Unlock()
+	if !ok {
+		return subLogin, resultCount
 	}
-
 	if minerSubInfo.subLogins != nil {
-		s.subMinerMu.Lock()
-		if len(minerSubInfo.subLogins) <= minerSubInfo.choice {
+		minerSubInfo.lock.Lock()
+		if minerSubInfo.totalCount <= minerSubInfo.choice {
 			minerSubInfo.choice = 0
 		}
 		subLogin = minerSubInfo.subLogins[minerSubInfo.choice]
 		resultCount = minerSubInfo.subLoginMap[subLogin]
 		minerSubInfo.choice++
-		s.subMinerMu.Unlock()
+		minerSubInfo.lock.Unlock()
 	}
 	return subLogin, resultCount
 }

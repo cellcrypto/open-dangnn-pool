@@ -72,6 +72,7 @@ func (s *ProxyServer) handleSubmitRPC(cs *Session, login, id string, params []st
 	t := s.currentBlockTemplate()
 	exist, validShare := s.processShare(login, id, cs.ip, t, params)
 	ok := s.policy.ApplySharePolicy(cs.ip, !exist && validShare)
+	s.policy.ApplyShareID(login, !exist && validShare)
 
 	if exist {
 		log.Printf("Duplicate share from %s@%s %v", login, cs.ip, params)
@@ -117,18 +118,20 @@ func (s *ProxyServer) handleSubmitHashRateRPC(cs *Session, login string, rate st
 		return &ErrorReply{Code: -3, Message: "Method not found"}
 	}
 
-	reported, _ := strconv.ParseInt(strings.Replace(rate, "0x", "", -1), 16, 64)
-	subLogins, count := s.db.ChoiceSubMiner2(login)
-
 	mapLogins := make(map[string]string)
-	if subLogins == nil {
-		mapLogins[login] = util.Join(reported, ts, 1)
-	} else {
-		for login, weight := range subLogins {
-			mapLogins[login] = util.Join(reported/count, ts, weight)
+	reported, _ := strconv.ParseInt(strings.Replace(rate, "0x", "", -1), 16, 64)
+	//subLogins, count := s.db.ChoiceSubMiner2(login)
+	s.subMinerMu.RLock()
+	subLogins, ok := s.subMiner[login]
+	s.subMinerMu.RUnlock()
+	if ok {
+		// Locking of subLogins is not needed.
+		for login, weight := range subLogins.subLoginMap {
+			mapLogins[login] = util.Join(reported/subLogins.totalCount, ts, weight)
 		}
+	} else {
+		mapLogins[login] = util.Join(reported, ts, 1)
 	}
-
 
 	s.backend.SetReportedtHashrates(mapLogins, WorkerId)
 

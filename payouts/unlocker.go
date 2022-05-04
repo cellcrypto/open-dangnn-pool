@@ -359,8 +359,9 @@ func (u *BlockUnlocker) unlockPendingBlocks() {
 		}
 
 		logEntry := fmt.Sprintf(
-			"IMMATURE %v: revenue %v, miners profit %v, pool profit: %v",
+			"IMMATURE %v: size: %d,revenue %v, miners profit %v, pool profit: %v",
 			hashName,
+			len(roundRewards),
 			util.FormatRatReward(revenue),
 			util.FormatRatReward(minersProfit),
 			util.FormatRatReward(poolProfit),
@@ -378,26 +379,16 @@ func (u *BlockUnlocker) unlockPendingBlocks() {
 
 		plogger.InsertLog(logEntry, plogger.LogTypePendingBlock, plogger.LogErrorNothing, block.RoundHeight, block.Height,"", "")
 
-		entries := []string{logEntry}
-		for login, reward := range roundRewards {
-			entries = append(entries, fmt.Sprintf("\tREWARD %v: %v: %v Shannon", block.RoundKey(), login, reward))
-
-			//per := new(big.Rat)
-			//if val, ok := percents[login]; ok {
-			//	per = val
-			//}
-			//u.backend.WriteReward(login, reward, per, true, block)
-		}
-		log.Println(strings.Join(entries, "\n"))
+		log.Println(logEntry)
 	}
 
 	log.Printf(
-		"(%v) IMMATURE SESSION: revenue %v, miners profit %v, pool profit: %v",
+		"(%v) IMMATURE SESSION: block size: %v,revenue %v, miners profit %v, pool profit: %v",
 		time.Since(start),
+		len(result.maturedBlocks),
 		util.FormatRatReward(totalRevenue),
 		util.FormatRatReward(totalMinersProfit),
 		util.FormatRatReward(totalPoolProfit),
-
 	)
 }
 
@@ -502,8 +493,9 @@ func (u *BlockUnlocker) unlockAndCreditMiners() {
 		totalPoolProfit.Add(totalPoolProfit, poolProfit)
 
 		logEntry := fmt.Sprintf(
-			"MATURED %v: revenue %v, miners profit %v, pool profit: %v",
+			"MATURED %v: size %v,revenue %v, miners profit %v, pool profit: %v",
 			block.RoundKey(),
+			len(roundRewards),
 			util.FormatRatReward(revenue),
 			util.FormatRatReward(minersProfit),
 			util.FormatRatReward(poolProfit),
@@ -511,22 +503,13 @@ func (u *BlockUnlocker) unlockAndCreditMiners() {
 
 		plogger.InsertLog(logEntry, plogger.LogTypeMaturedBlock, plogger.LogErrorNothing, block.RoundHeight, block.Height,"", "")
 
-		entries := []string{logEntry}
-		for login, reward := range roundRewards {
-			entries = append(entries, fmt.Sprintf("\tREWARD %v: %v: %v Shannon", block.RoundKey(), login, reward))
-
-			//per := new(big.Rat)
-			//if val, ok := percents[login]; ok {
-			//	per = val
-			//}
-			//u.backend.WriteReward(login, reward, per, false, block)
-		}
-		log.Println(strings.Join(entries, "\n"))
+		log.Println(logEntry)
 	}
 
 	log.Printf(
-		"(%s) MATURE SESSION: revenue %v, miners profit %v, pool profit: %v",
+		"(%s) MATURE SESSION: block size: %v,revenue %v, miners profit %v, pool profit: %v",
 		time.Since(start),
+		len(result.maturedBlocks),
 		util.FormatRatReward(totalRevenue),
 		util.FormatRatReward(totalMinersProfit),
 		util.FormatRatReward(totalPoolProfit),

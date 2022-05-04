@@ -61,6 +61,7 @@ type InboundIpList struct {
 type InboundIdList struct {
 	Id      string
 	Allowed bool // true: allow false: deny
+	Alarm	string	// none, slack, mail
 	Desc	string
 }
 
@@ -77,13 +78,16 @@ type DevSubList struct {
 
 var (
 	GenesisReword =   math.MustParseBig256("3000000000000000000")	// 300DGC = 3ETH
-	DiffByShareValue = int64(2000000000)
+	CarratReward =    math.MustParseBig256("3300000000000000000")	// 330DGC = 3.3ETH
+	DiffByShareValue            = int64(2000000000)
+	CarrathardforkheightMainnet = int64(500800)
+	CarrathardforkheightTestnet = int64(641800)
 )
 
 func GetConstReward(height int64) *big.Int {
-	//if height >= byzantiumHardForkHeight {
-	//	return new(big.Int).Set(byzantiumReward)
-	//}
+	if height >= CarrathardforkheightTestnet {
+		return new(big.Int).Set(CarratReward)
+	}
 	return new(big.Int).Set(GenesisReword)
 }
 

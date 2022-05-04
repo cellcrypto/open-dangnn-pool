@@ -1,13 +1,12 @@
 package proxy
 
 import (
+	"github.com/ethereum/go-ethereum/common"
 	"log"
 	"math/big"
 	"strconv"
 	"strings"
 	"sync"
-
-	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/cellcrypto/open-dangnn-pool/rpc"
 	"github.com/cellcrypto/open-dangnn-pool/util"
@@ -42,10 +41,12 @@ type Block struct {
 
 type MinerSubInfo struct {
 	login string
-	choice int
+	choice int64
 	timeout int64
+	totalCount int64
 	subLogins []string
 	subLoginMap map[string]int
+	lock sync.Mutex
 }
 
 func (b Block) Difficulty() *big.Int     { return b.difficulty }

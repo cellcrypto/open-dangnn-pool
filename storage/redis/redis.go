@@ -1535,3 +1535,47 @@ func (r *RedisClient) GetToken(devId string) (string, error) {
 	resultVal, _ := result.Result()
 	return resultVal, nil
 }
+
+func (r *RedisClient) InitAlarmBeat(alarmList []string, exp time.Duration) error {
+	tx := r.client.Multi()
+	defer tx.Close()
+	ts := util.MakeTimestamp() / 1000
+	_, err := tx.Exec(func() error {
+		for _, login := range alarmList {
+			r.client.Set(r.formatKey("beat", login), ts, exp)
+		}
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *RedisClient) WriteAlarmBeat(login string, exp time.Duration) error {
+	tx := r.client.Multi()
+	defer tx.Close()
+	ts := util.MakeTimestamp() / 1000
+	_, err := tx.Exec(func() error {
+		r.client.Set(r.formatKey("beat", login), ts, exp)
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+
+func (r *RedisClient) GetAlarmBeat(login string) (bool, error) {
+	result := r.client.Get(r.formatKey("beat", login))
+	if result.Err() == redis.Nil {
+		return false, nil
+	} else if result.Err() != nil {
+		return false, result.Err()
+	}
+
+	return true, nil
+}

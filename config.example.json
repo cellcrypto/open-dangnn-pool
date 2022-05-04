@@ -30,6 +30,7 @@
 			"workers": 8,
 			"resetInterval": "60m",
 			"refreshInterval": "1m",
+			"MinerShareCheckBeatInterval": "30s",
 
 			"banning": {
 				"enabled": false,
@@ -65,7 +66,20 @@
 		"hashrateLargeWindow": "3h",
 		"luckWindow": [64, 128, 256],
 		"payments": 30,
-		"blocks": 50
+		"blocks": 50,
+		"AccessSecret": "tokenSecret",
+
+		"DeleteCheckInterval" : "5m",
+		"DeleteMaxRecord": 10000,
+		"DeleteKeepRecord": 10000000,
+
+		"Alarm" : {
+			"Enabled": true,
+			"AlarmCheckInterval": "1m",
+			"AlarmCheckWaitInterval": "10m",
+			"SlackBotToken": "xoxb-32423423423423-xxxxxxxxxxxx-Vxxxxxxxxxxxxx8b6Y4vc",
+			"SlackChannelId": "C0HHHHHHHHHH"
+		}
 	},
 
 	"upstreamCheckInterval": "5s",

@@ -1,6 +1,8 @@
 <div class="container">
   {{#if model.idbounds}}
-  <h4>InBound DevID List <button type="button" class="btn btn-danger btn-sm" data-toggle="modal" data-target="#addModal">add</button></h4>
+  <h4>InBound DevID List <button type="button" class="btn btn-primary btn-sm" data-toggle="modal" data-target="#addModal">add</button>
+    <button type="button" {{ action "pop" }} class="btn btn-danger btn-sm" style="float: right;">apply</button>
+  </h4>
 
   <!-- Modal -->
   <div class="modal fade" id="addModal" tabindex="-1" aria-labelledby="addModal" aria-hidden="true">
@@ -26,11 +28,63 @@
                 <option value={{option}}>{{option}}</option>
               {{/each}}
             </select>
+             <br>
+            <label for="sel2">Alarm : </label>
+            <select onchange={{action (mut selectedAlarm) value='target.value'}}>
+              {{#each options2 as |option|}}
+                <option value={{option}}>{{option}}</option>
+              {{/each}}
+            </select>
+            {{input value=textDesc placeholder="" name="desc"}}
           </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
           <button type="button" {{ action "add" }} data-dismiss="modal" class="btn btn-primary">ADD</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Modal -->
+  <div class="modal fade" id="alarmModal" tabindex="-1" aria-labelledby="alarmModal" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+        <h5 class="modal-title" id="alarmModal">Change Alarm</h5>
+        </div>
+        <div class="modal-body">
+          <div class="input-group">
+              <label for="sel2">Alarm : </label><br>
+              <select onchange={{action (mut selectedAlarm) value='target.value'}}>
+                {{#each options2 as |option|}}
+                  <option value={{option}}>{{option}}</option>
+                {{/each}}
+              </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+          <button type="button" {{ action "changeAlarm" }} data-dismiss="modal" class="btn btn-primary">Change Alarm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Modal -->
+  <div class="modal fade" id="descModal" tabindex="-1" aria-labelledby="descModal" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+        <h5 class="modal-title" id="descModal">Change DESC</h5>
+        </div>
+        <div class="modal-body">
+          <div class="input-group">
+              <label for="sel2">Desc : </label><br>
+              {{input value=selectedDesc placeholder="" name="desc"}}
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+          <button type="button" {{ action "changeDesc" }} data-dismiss="modal" class="btn btn-primary">Change Desc</button>
         </div>
       </div>
     </div>
@@ -42,6 +96,7 @@
         <tr>
           <th>Dev ID</th>
           <th>Allowed</th>
+          <th>Alarm</th>
           <th>Desc</th>
           <th>X</th>
         </tr>
@@ -60,9 +115,14 @@
               {{/if}}
             </td>
             <td>
+              {{idbound.Alarm}}
+            </td>
+            <td>
               {{idbound.Desc}}
             </td>
             <td>
+                <button class="btn btn-primary btn-sm" {{action "focusline" idbound.Id}} data-toggle="modal" data-target="#alarmModal">Change Alarm</button>
+                <button class="btn btn-primary btn-sm" {{action "focusline" idbound.Id}} data-toggle="modal" data-target="#descModal">Change Desc</button>
                 <button {{ action "delete" idbound.Id}} class="btn btn-danger btn-sm">delete</button>
             </td>
           </tr>

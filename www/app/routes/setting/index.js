@@ -77,7 +77,25 @@ export default Ember.Route.extend({
           return data;
         })
       }
-    }
+    },
+    pop() {
+      if (confirm("**Import** Do you really want to apply sub miner list?")) {
+        var r = this;
+        var url = config.APP.ApiUrl + 'api/applysub';
+        return Ember.$.ajax({
+          method: 'post',
+          url: url,
+          crossDomain: true,
+          xhrFields: {
+            withCredentials: true
+          }
+        }).then(function(data) {
+          Ember.run.later(r, r.refresh, 10);
+          alert("applyed :" + data.status);
+          return data;
+        });
+      }
+    },
   },
 
 

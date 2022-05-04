@@ -2,10 +2,12 @@ package proxy
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/cellcrypto/open-dangnn-pool/hook"
 	"github.com/cellcrypto/open-dangnn-pool/util/plogger"
 	"io"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"strings"
@@ -42,6 +44,9 @@ type ProxyServer struct {
 
 	subMinerMu sync.RWMutex
 	subMiner map[string]*MinerSubInfo
+
+	// alarm
+	minerBeatIntv int64
 }
 
 type ReportedRate struct {
@@ -64,7 +69,6 @@ func NewProxy(cfg *Config, backend *redis.RedisClient, db *mysql.Database) *Prox
 		log.Fatal("You must set instance name")
 	}
 	policy := policy.Start(&cfg.Proxy.Policy, backend, db)
-
 	proxy := &ProxyServer{config: cfg, backend: backend, db: db, policy: policy}
 	proxy.diff = util.GetTargetHex(cfg.Proxy.Difficulty)
 
@@ -83,6 +87,7 @@ func NewProxy(cfg *Config, backend *redis.RedisClient, db *mysql.Database) *Prox
 	proxy.reportRates = make(map[string]*ReportedRate,0)
 	proxy.subMiner = make(map[string]*MinerSubInfo,0)
 
+	proxy.InitSubLogin()
 	proxy.fetchBlockTemplate()
 
 	proxy.hashrateExpiration = util.MustParseDuration(cfg.Proxy.HashrateExpiration)
@@ -152,6 +157,30 @@ func NewProxy(cfg *Config, backend *redis.RedisClient, db *mysql.Database) *Prox
 	return proxy
 }
 
+func (s *ProxyServer) RedisMessage(payload string) {
+	splitData := strings.Split(payload,":")
+	if len(splitData) != 3 {
+		return
+	}
+	opcode := splitData[0]
+	from := splitData[1]
+	msg := splitData[2]
+	switch opcode {
+	case redis.OpcodeLoadID:
+		s.policy.RefreshInboundID()
+	case redis.OpcodeLoadIP:
+		s.policy.RefreshInboundIP()
+	case redis.OpcodeWhiteList:
+		s.policy.RefreshBanWhiteList()
+	case redis.OpcodeMinerSub:
+		s.InitSubLogin()
+	default:
+		log.Printf("not defined opcode: %v", opcode)
+	}
+
+	fmt.Printf("(opcode:%v from:%s)RedisMessage: %s\n", opcode, from, msg)
+}
+
 func (s *ProxyServer) Start() {
 	log.Printf("Starting proxy on %v", s.config.Proxy.Listen)
 	r := mux.NewRouter()
@@ -162,6 +191,9 @@ func (s *ProxyServer) Start() {
 		Handler:        r,
 		MaxHeaderBytes: s.config.Proxy.LimitHeadersSize,
 	}
+
+	s.backend.InitPubSub("proxy",s)
+
 	err := srv.ListenAndServe()
 	if err != nil {
 		log.Fatalf("Failed to start proxy: %v", err)
@@ -348,4 +380,56 @@ func (s *ProxyServer) isSick() bool {
 
 func (s *ProxyServer) markOk() {
 	atomic.StoreInt64(&s.failsCount, 0)
+}
+
+func (s *ProxyServer) InitSubLogin() {
+	subList, err := s.db.GetMinerSubList()
+	if err != nil {
+		log.Fatalf("failed to GetMinerSubList: %v", err)
+		return
+	}
+
+	tmpSubMiner := make(map[string]*MinerSubInfo)
+
+	for _, sub := range subList {
+		minerSubInfo, ok := tmpSubMiner[sub.DevAddr]
+		if !ok {
+			minerSubInfo = &MinerSubInfo{
+				login:       sub.DevAddr,
+				choice:      0,
+				timeout:     0,
+				totalCount:  0,
+				subLogins:   make([]string, 0, 18),
+				subLoginMap: make(map[string]int),
+			}
+			tmpSubMiner[sub.DevAddr] = minerSubInfo
+		}
+
+		if sub.Amount <= 0 {
+			sub.Amount = 1
+		}
+		for i:=int64(0);i < sub.Amount;i++ {
+			minerSubInfo.subLogins = append(minerSubInfo.subLogins, sub.SubAddr)
+		}
+
+		if subLoginMap, ok := minerSubInfo.subLoginMap[sub.SubAddr]; ok {
+			minerSubInfo.subLoginMap[sub.SubAddr] = subLoginMap + int(sub.Amount)
+			minerSubInfo.totalCount += sub.Amount
+		} else {
+			minerSubInfo.subLoginMap[sub.SubAddr] = int(sub.Amount)
+			minerSubInfo.totalCount += sub.Amount
+		}
+	}
+
+	// randomly shuffle minerSubInfo.subLogins
+	for _, value  := range  tmpSubMiner {
+		rand.Seed(time.Now().UnixNano())
+		rand.Shuffle(len(value.subLogins), func(i, j int) { value.subLogins[i], value.subLogins[j] = value.subLogins[j], value.subLogins[i] })
+	}
+
+	fmt.Printf("Re-load separated minor information: \n total size: %v sub size: %v\n",len(subList), len(tmpSubMiner))
+
+	s.subMinerMu.Lock()
+	s.subMiner = tmpSubMiner
+	s.subMinerMu.Unlock()
 }

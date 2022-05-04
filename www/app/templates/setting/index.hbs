@@ -1,8 +1,7 @@
 <div class="container">
-  <div>
-    <h4>Separate wallets by device <button type="button" class="btn btn-danger btn-sm" data-toggle="modal" data-target="#addModal">add</button></h4>
-  </div>
-
+  <h4>Separate wallets by device <button type="button" class="btn btn-primary btn-sm" data-toggle="modal" data-target="#addModal">add</button>
+    <button type="button" {{ action "pop" }} class="btn btn-danger btn-sm" style="float: right;">apply</button>
+  </h4>
   <!-- Modal -->
   <div class="modal fade" id="addModal" tabindex="-1" aria-labelledby="addModal" aria-hidden="true">
     <div class="modal-dialog">

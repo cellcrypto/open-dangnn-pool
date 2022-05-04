@@ -108,6 +108,36 @@ func TestGetByzantiumUncleReward(t *testing.T) {
 	}
 }
 
+func TestGetCarrotUncleReward(t *testing.T) {
+	rewards := make(map[int64]string)
+	expectedRewards := map[int64]string{
+		1: "2887500000000000000",
+		2: "2475000000000000000",
+		3: "2062500000000000000",
+		4: "1650000000000000000",
+		5: "1237500000000000000",
+		6: "825000000000000000",
+		7: "412500000000000000",
+	}
+	for i := int64(1); i < 8; i++ {
+		rewards[i] = types.GetUncleReward(types.CarrathardforkheightMainnet, types.CarrathardforkheightMainnet+i).String()
+	}
+	for i, reward := range rewards {
+		if expectedRewards[i] != rewards[i] {
+			t.Errorf("Incorrect uncle reward for %v, expected %v vs %v", i, expectedRewards[i], reward)
+		}
+	}
+}
+
+func TestGetCarrotRewardForUngle(t *testing.T) {
+	reward := types.GetRewardForUncle(types.CarrathardforkheightMainnet).String()
+	expectedReward := "103125000000000000"
+	if expectedReward != reward {
+		t.Errorf("Incorrect uncle bonus for height %v, expected %v vs %v", byzantiumHardForkHeight, expectedReward, reward)
+	}
+}
+
+
 func TestGetRewardForUngle(t *testing.T) {
 	reward := types.GetRewardForUncle(1).String()
 	expectedReward := "156250000000000000"

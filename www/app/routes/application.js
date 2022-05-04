@@ -40,7 +40,7 @@ export default Ember.Route.extend({
       xhrFields: {
         withCredentials: true
       },
-      //headers: {"access_token": token},
+      headers: {"access_token": token},
     }).then((result) => {
       return Ember.Object.create(result);
     }, (err) => {

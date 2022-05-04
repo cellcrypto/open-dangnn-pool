@@ -50,6 +50,24 @@ export default Ember.Route.extend({
         return data;
       });
     },
+    pop() {
+      if (confirm("**Import** Do you really want to apply ip?")) {
+        var r = this;
+        var url = config.APP.ApiUrl + 'api/applyip';
+        return Ember.$.ajax({
+          method: 'post',
+          url: url,
+          crossDomain: true,
+          xhrFields: {
+            withCredentials: true
+          }
+        }).then(function(data) {
+          Ember.run.later(r, r.refresh, 10);
+          alert("applyed :" + data.status);
+          return data;
+        });
+      }
+    },
   },
 
 

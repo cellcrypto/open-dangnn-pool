@@ -74,7 +74,7 @@ const (
 	eLostBlock		= ImmaturedState("LostBlock")
 )
 
-const constInsertCountSqlMax = 10
+const constInsertCountSqlMax = 2000
 
 
 func New(cfg *Config, proxyDiff int64,redis *redis.RedisClient) (*Database, error) {
@@ -200,7 +200,7 @@ func (d *Database) WriteCandidates(height uint64, params []string, nowTime strin
 func (d *Database) GetCandidates(maxHeight int64) ([]*types.BlockData, error) {
 	conn := d.Conn
 
-	rows, err := conn.Query("SELECT round_height,nonce,hash_no_nonce,mix_digest,round_diff,total_share,insert_time FROM blocks WHERE state=0 AND coin=? AND round_height < ?", d.Config.Coin, maxHeight)
+	rows, err := conn.Query("SELECT round_height,nonce,hash_no_nonce,mix_digest,round_diff,total_share,insert_time,`timestamp` FROM blocks WHERE state=0 AND coin=? AND round_height < ?", d.Config.Coin, maxHeight)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -213,16 +213,14 @@ func (d *Database) GetCandidates(maxHeight int64) ([]*types.BlockData, error) {
 			nonce,hashNoNonce, mixDigest string
 			roundDiff, totalShare       int64
 			insertTime                  string
+			timestamp					int64
 		)
 
-		err := rows.Scan(&height,&nonce,&hashNoNonce,&mixDigest,&roundDiff,&totalShare,&insertTime)
+		err := rows.Scan(&height,&nonce,&hashNoNonce,&mixDigest,&roundDiff,&totalShare,&insertTime,&timestamp)
 		if err != nil {
 			log.Printf("mysql GetCandidates:rows.Scan() error: %v",err)
 			return nil, err
 		}
-
-		t  := util.MakeTimestampDB(insertTime) / 1000
-
 
 		block := types.BlockData{}
 		block.Height = height
@@ -230,7 +228,7 @@ func (d *Database) GetCandidates(maxHeight int64) ([]*types.BlockData, error) {
 		block.Nonce = nonce
 		block.PowHash = hashNoNonce
 		block.MixDigest = mixDigest
-		block.Timestamp = t
+		block.Timestamp = timestamp
 		block.Difficulty = roundDiff
 		block.TotalShares = totalShare
 		//block.candidateKey = v.Member.(string)
@@ -306,15 +304,16 @@ func (d *Database) WriteImmatureError(block *types.BlockData, blockState int, er
 		log.Fatal(err)
 	}
 
-	if errNum == 2 {
-		// There is no round+block information of Redis during compensation block check.
-		// Think of it as a lost block.
-		immatureCredits, _:= d.selectCreditsImmature(block.RoundHeight,block.Hash)
-
-		if len(immatureCredits) > 0 {
-			d.calcuCreditsImmature(block, immatureCredits,eLostBlock)
-		}
-	}
+	// NO NEED
+	//if errNum == 2 {
+	//	// There is no round+block information of Redis during compensation block check.
+	//	// Think of it as a lost block.
+	//	immatureCredits, _:= d.selectCreditsImmature(block.RoundHeight,block.Hash)
+	//
+	//	if len(immatureCredits) > 0 {
+	//		d.calcuCreditsImmature(block, immatureCredits,eLostBlock)
+	//	}
+	//}
 
 	return err
 }
@@ -628,6 +627,24 @@ func (d *Database) WriteOrphan(block *types.BlockData) error {
 }
 
 func (d *Database) calcuCreditsImmature(block *types.BlockData, immatureCredits []*types.CreditsImmatrue, orphan ImmaturedState) {
+	conn := d.Conn
+
+	res, err := conn.Exec("DELETE FROM credits_immature WHERE coin=? AND round_height=? AND hash=?", d.Config.Coin, block.RoundHeight, block.Hash)
+	if err != nil {
+		log.Printf("mysql calcuCreditsImmature:Exec() error: %v", err)
+		return
+	}
+	count, err := res.RowsAffected()
+	if err != nil {
+		log.Printf("mysql calcuCreditsImmature:RowsAffected() error: %v", err)
+		return
+	}
+
+	if  count <= 0 {
+		fmt.Printf("round height:%d hash:%s\n", block.RoundHeight, block.Hash)
+		return
+	}
+
 	var (
 		updateCnt          int
 		creditsImmatureSql strings.Builder
@@ -777,13 +794,12 @@ func (d *Database) writeMaturedBlock(block *types.BlockData, creditsBalanceSql, 
 
 // WriteMaturedBlock If the reward miner is more than 20,000, you need to increase the query capacity or modify it!!
 func (d *Database) WriteMaturedBlock(block *types.BlockData, roundRewards map[string]int64, percents map[string]*big.Rat) error {
-
+	start := time.Now()
 	immatureCredits, _:= d.selectCreditsImmature(block.RoundHeight, block.Hash)
 
 	// Let's write a query for the contents to be saved in advance.
 	creditsBalanceSql, minerBalanceSql, financesSql := d.makeMaturedBlcokSQL(block, roundRewards, percents)
 
-	start := time.Now()
 	// commit to db
 	err := d.writeMaturedBlock(block, creditsBalanceSql, minerBalanceSql, financesSql)
 	if err != nil {
@@ -793,9 +809,8 @@ func (d *Database) WriteMaturedBlock(block *types.BlockData, roundRewards map[st
 	// Delete Redis share information.
 	d.Redis.DeleteRoundBlock(block.RoundHeight, block.Nonce)
 
-	log.Printf("!@#!@#!@#! writeMaturedBlock execute time: %s", time.Since(start))
 	d.calcuCreditsImmature(block, immatureCredits, eMaturedBlock)
-
+	log.Printf("!@#!@#!@#! writeMaturedBlock execute time: %s count: %d", time.Since(start), len(roundRewards))
 	return nil
 }
 
@@ -1519,91 +1534,6 @@ func (d *Database) IsMinerExists(login string) (bool,int64,error) {
 	return false, 0, nil
 }
 
-func (d *Database) ChoiceSubMiner(login string) ([]string, map[string]int){
-	conn := d.Conn
-	var result []string
-	var resultMap map[string]int
-	rows, err := conn.Query("SELECT sub_addr,weight FROM miner_sub WHERE coin=? AND login_addr=?", d.Config.Coin, login)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var (
-			subAddr string
-			weight  int
-		)
-
-		err := rows.Scan(&subAddr, &weight)
-		if err != nil {
-			log.Printf("mysql ChoiceSubMiner:rows.Scan() error: %v", err)
-			return nil, nil
-		}
-
-		if weight <= 0 { weight = 1 }
-
-		for i:= 0;i<weight;i++ {
-			result = append(result, subAddr)
-		}
-
-		if resultMap == nil {
-			resultMap = make(map[string]int)
-		}
-
-		if addrCnt, ok := resultMap[subAddr]; ok {
-			resultMap[subAddr] = addrCnt + weight
-		} else {
-			resultMap[subAddr] = weight
-		}
-	}
-
-	return result, resultMap
-}
-
-func (d *Database) ChoiceSubMiner2(login string) (map[string]int64,int64){
-	conn := d.Conn
-
-	var (
-		resultMap map[string]int64
-		weightCount int64
-	)
-
-	rows, err := conn.Query("SELECT sub_addr,weight FROM miner_sub WHERE coin=? AND login_addr=?", d.Config.Coin, login)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var (
-			subAddr string
-			weight  int64
-		)
-
-		err := rows.Scan(&subAddr, &weight)
-		if err != nil {
-			log.Printf("mysql ChoiceSubMiner:rows.Scan() error: %v", err)
-			return nil, 0
-		}
-
-		if weight <= 0 { weight = 1 }
-
-		if resultMap == nil {
-			resultMap = make(map[string]int64)
-		}
-
-		weightCount += weight
-
-		if addrCnt, ok := resultMap[subAddr]; ok {
-			resultMap[subAddr] = addrCnt + weight
-		} else {
-			resultMap[subAddr] = weight
-		}
-	}
-
-	return resultMap, weightCount
-}
 
 func (d *Database) GetIpInboundList() ([]*types.InboundIpList, error) {
 	conn := d.Conn
@@ -1667,11 +1597,24 @@ func (d *Database) DelIpInbound(ip string) bool {
 	return true
 }
 
+func (d *Database) IsIdInboundId(devID string) bool {
+	conn := d.Conn
+	rows, err := conn.Query("SELECT id FROM inbound_id WHERE coin=? AND id=?",d.Config.Coin, devID)
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	for rows.Next() {
+		return  true
+	}
+	return false
+}
+
 
 func (d *Database) GetIdInboundList() ([]*types.InboundIdList, error) {
 	conn := d.Conn
 
-	rows, err := conn.Query("SELECT id,rule,`desc` FROM inbound_id WHERE coin=?",d.Config.Coin)
+	rows, err := conn.Query("SELECT id,rule,alarm,`desc` FROM inbound_id WHERE coin=?",d.Config.Coin)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1681,9 +1624,9 @@ func (d *Database) GetIdInboundList() ([]*types.InboundIdList, error) {
 
 	for rows.Next() {
 		var (
-			id,rule,desc string
+			id,rule,alarm,desc string
 		)
-		err := rows.Scan(&id, &rule, &desc)
+		err := rows.Scan(&id, &rule, &alarm, &desc)
 		if err != nil {
 			log.Printf("mysql GetIdInboundList:rows.Scan() error: %v", err)
 			return nil, err
@@ -1695,6 +1638,7 @@ func (d *Database) GetIdInboundList() ([]*types.InboundIdList, error) {
 		result = append(result, &types.InboundIdList{
 			Id:      id,
 			Allowed: allowed,
+			Alarm: alarm,
 			Desc: desc,
 		})
 	}
@@ -1702,10 +1646,10 @@ func (d *Database) GetIdInboundList() ([]*types.InboundIdList, error) {
 	return result, nil
 }
 
-func (d *Database) SaveIdInbound(id,rule string) bool {
+func (d *Database) SaveIdInbound(id,rule,alarm,desc string) bool {
 	conn := d.Conn
 
-	ret,err := conn.Exec("INSERT INTO inbound_id(coin,id,rule) VALUES (?,?,?)", d.Config.Coin, id, rule)
+	ret,err := conn.Exec("INSERT INTO inbound_id(coin,id,rule,alarm,`desc`) VALUES (?,?,?,?,?)", d.Config.Coin, id, rule, alarm, desc)
 	if err != nil {
 		log.Printf("mysql SaveIpInbound:Exec() error: %v", err)
 		return false
@@ -1717,6 +1661,29 @@ func (d *Database) SaveIdInbound(id,rule string) bool {
 
 	return true
 }
+
+func (d *Database) UpdateIdInboundAlarm(id,alarm string) bool {
+	conn := d.Conn
+	//The location (d.Config.Coin) does not need to be set.
+	_,err := conn.Exec("UPDATE inbound_id SET alarm=? WHERE coin=? AND id=?", alarm, d.Config.Coin, id)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return true
+}
+
+func (d *Database) UpdateIdInboundDesc(id,desc string) bool {
+	conn := d.Conn
+	//The location (d.Config.Coin) does not need to be set.
+	_,err := conn.Exec("UPDATE inbound_id SET `desc`=? WHERE coin=? AND id=?", desc, d.Config.Coin, id)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return true
+}
+
 
 func (d *Database) DelIdInbound(id string) bool {
 	conn := d.Conn
@@ -1773,7 +1740,7 @@ func (d *Database) GetLikeMinerSubList(addr string) ([]*types.DevSubList, error)
 }
 
 
-func (d *Database) GetMinerSubList(devId string) ([]*types.DevSubList, error) {
+func (d *Database)  GetMinerSubInfo(devId string) ([]*types.DevSubList, error) {
 	conn := d.Conn
 
 	var (
@@ -1813,6 +1780,43 @@ func (d *Database) GetMinerSubList(devId string) ([]*types.DevSubList, error) {
 
 	return result, err
 }
+
+
+func (d *Database)  GetMinerSubList() ([]*types.DevSubList, error) {
+	conn := d.Conn
+
+	result := make([]*types.DevSubList,0)
+
+	rows, err := conn.Query("SELECT login_addr,sub_addr,weight FROM miner_sub WHERE coin=?", d.Config.Coin)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			devAddr, subAddr string
+			weight  int64
+		)
+
+		err := rows.Scan(&devAddr, &subAddr, &weight)
+		if err != nil {
+			log.Printf("mysql GetMinerSubList:rows.Scan() error: %v", err)
+			return nil, err
+		}
+
+		if weight <= 0 { weight = 1 }
+
+		result = append(result, &types.DevSubList{
+			DevAddr: devAddr,
+			SubAddr: subAddr,
+			Amount:  weight,
+		})
+	}
+
+	return result, err
+}
+
 
 func (d *Database) SaveSubIdIndex(devId, subId string, amount int64) bool {
 	conn := d.Conn
@@ -1990,4 +1994,80 @@ func (d *Database) GetAccountList() ([]*types.UserInfo, error) {
 	}
 
 	return result, nil
+}
+
+
+func (d *Database) GetAlarmInfo() (map[string]*types.InboundIdList, error){
+	conn := d.Conn
+
+	rows, err := conn.Query("SELECT id, alarm,`desc` FROM inbound_id WHERE coin=? and alarm!=? ",d.Config.Coin,"none")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]*types.InboundIdList,0)
+
+	for rows.Next() {
+		var (
+			id,alarm,desc string
+		)
+		err := rows.Scan(&id, &alarm, &desc)
+		if err != nil {
+			log.Printf("mysql GetAlarmInfo:rows.Scan() error: %v", err)
+			return nil, err
+		}
+
+		if alarm == "slack" || alarm == "mail" {
+			result[id] = &types.InboundIdList{
+				Id:      id,
+				Alarm: alarm,
+				Desc: desc,
+			}
+		}
+	}
+
+	return result, nil
+}
+
+func (d *Database) GetBlockBalanceMinMax() (int64, int64) {
+	conn := d.Conn
+
+	rows, err := conn.Query("SELECT min(seq),max(seq) FROM credits_balance")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			minSeq,maxSeq int64
+		)
+		err := rows.Scan(&minSeq, &maxSeq)
+		if err != nil {
+			log.Printf("mysql GetBlockBalanceMinMax:rows.Scan() error: %v", err)
+			return 0, 0
+		}
+
+		return minSeq, maxSeq
+	}
+
+	return 0, 0
+}
+
+
+func (d *Database) DeleteBlockBalance(min,max int64) (int64) {
+	conn := d.Conn
+
+	rows ,err := conn.Exec("DELETE FROM `credits_balance` WHERE seq BETWEEN ? AND ?  ", min, max)
+	if err != nil {
+		log.Printf("mysql DeleteAccount:Exec() error: %v", err)
+		return 0
+	}
+
+	res, err := rows.RowsAffected()
+	if err != nil {
+		return 0
+	}
+	return res
 }

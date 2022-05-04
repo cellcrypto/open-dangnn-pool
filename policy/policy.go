@@ -20,7 +20,8 @@ type Config struct {
 	Banning         Banning `json:"banning"`
 	Limits          Limits  `json:"limits"`
 	ResetInterval   string  `json:"resetInterval"`
-	RefreshInterval string  `json:"refreshInterval"`
+	RefreshInterval string  `json:"refreshInterval"`	// Deprecated. Use Alarm feature instead.
+	MinerShareCheckBeatInterval	string `json:"minerShareCheckBeatInterval"`
 }
 
 type Limits struct {
@@ -51,7 +52,11 @@ type Stats struct {
 	ConnLimit     int32
 	Banned        int32
 	Logined		 bool
+}
 
+type AlarmBeat struct {
+	updateAt int64
+	login string
 }
 
 type PolicyServer struct {
@@ -63,14 +68,17 @@ type PolicyServer struct {
 	startedAt  int64
 	grace      int64
 	timeout    int64
-	whitelist []string
 	inboundIp mapset.Set
 	allowAllIp bool
 	inboundId mapset.Set
-	whitelist2  mapset.Set
+	whitelist  mapset.Set
 	allowAllId bool
 	storage   *redis.RedisClient
 	db 		   *mysql.Database
+
+	alarmBeatsMu sync.RWMutex
+	alarmBeats map[string]*AlarmBeat
+	beatIntv time.Duration
 }
 
 func Start(cfg *Config, storage *redis.RedisClient, db *mysql.Database) *PolicyServer {
@@ -79,6 +87,7 @@ func Start(cfg *Config, storage *redis.RedisClient, db *mysql.Database) *PolicyS
 	s.grace = int64(grace / time.Millisecond)
 	s.banChannel = make(chan string, 64)
 	s.stats = make(map[string]*Stats)
+	s.alarmBeats = make(map[string]*AlarmBeat)
 	s.storage = storage
 	s.db = db
 	s.refreshState()
@@ -90,9 +99,9 @@ func Start(cfg *Config, storage *redis.RedisClient, db *mysql.Database) *PolicyS
 	resetTimer := time.NewTimer(resetIntv)
 	log.Printf("Set policy stats reset every %v", resetIntv)
 
-	refreshIntv := util.MustParseDuration(s.config.RefreshInterval)
-	refreshTimer := time.NewTimer(refreshIntv)
-	log.Printf("Set policy state refresh every %v", refreshIntv)
+	minerShareCheckBeatIntv := util.MustParseDuration(s.config.MinerShareCheckBeatInterval)
+	s.beatIntv = minerShareCheckBeatIntv
+	s.InitAlarmBeat(minerShareCheckBeatIntv)
 
 	go func() {
 		for {
@@ -100,9 +109,9 @@ func Start(cfg *Config, storage *redis.RedisClient, db *mysql.Database) *PolicyS
 			case <-resetTimer.C:
 				s.resetStats()
 				resetTimer.Reset(resetIntv)
-			case <-refreshTimer.C:
-				s.refreshState()
-				refreshTimer.Reset(refreshIntv)
+			//case <-refreshTimer.C:
+			//	s.refreshState()
+			//	refreshTimer.Reset(refreshIntv)
 			}
 		}
 	}()
@@ -153,12 +162,38 @@ func (s *PolicyServer) resetStats() {
 }
 
 func (s *PolicyServer) refreshState() {
+	// Reads the list of IPs to receive from the pool server from DB.
+	s.RefreshInboundIP()
+	// Reads the list of ids to receive from the pool server from DB.
+	s.RefreshInboundID()
+	// Read the white list.
+	s.RefreshBanWhiteList()
+	log.Println("!! Policy state refresh complete")
+}
+
+func (s *PolicyServer) RefreshBanWhiteList() {
+
+	tmpWhiteList, err := s.db.GetBanWhitelist()
+
 	s.Lock()
 	defer s.Unlock()
-	var err error
 
-	// s.blacklist, err = s.storage.GetBlacklist()
+	if err != nil {
+		log.Printf("Failed to get whitelist from backend: %v", err)
+		s.whitelist = nil
+	} else {
+		s.whitelist = tmpWhiteList
+	}
+
+	log.Println("!! Policy white list refresh complete")
+}
+
+func (s *PolicyServer) RefreshInboundIP() {
 	inboundIp, err := s.db.GetIpInboundList()
+
+	s.Lock()
+	defer s.Unlock()
+
 	if err != nil {
 		log.Printf("Failed to get blacklist from backend: %v", err)
 		s.inboundIp = nil
@@ -170,23 +205,32 @@ func (s *PolicyServer) refreshState() {
 				}
 			}
 		}
-		s.inboundIp = mapset.NewSet()
+		tmpInboundIp := mapset.NewSet()
 		for _, origin := range inboundIp {
 			if s.allowAllIp == true {
 				// black list
 				if origin.Allowed == false {
-					s.inboundIp.Add(origin.Ip)
+					tmpInboundIp.Add(origin.Ip)
 				}
 			} else {
 				// white list
 				if origin.Allowed == true {
-					s.inboundIp.Add(origin.Ip)
+					tmpInboundIp.Add(origin.Ip)
 				}
 			}
 		}
+		s.inboundIp = tmpInboundIp
 	}
 
+	log.Println("!! Policy inbound ip list refresh complete")
+}
+
+func (s *PolicyServer) RefreshInboundID() {
 	inboundId, err := s.db.GetIdInboundList()
+
+	s.Lock()
+	defer s.Unlock()
+
 	if err != nil {
 		log.Printf("Failed to get blacklist from backend: %v", err)
 		s.inboundId = nil
@@ -198,29 +242,60 @@ func (s *PolicyServer) refreshState() {
 				}
 			}
 		}
-		s.inboundId = mapset.NewSet()
+		tmpInboundId := mapset.NewSet()
+		alarmBeat := mapset.NewSet()
 		for _, origin := range inboundId {
 			if s.allowAllId == true {
 				// black list
 				if origin.Allowed == false {
-					s.inboundId.Add(origin.Id)
+					tmpInboundId.Add(origin.Id)
 				}
 			} else {
 				// white list
 				if origin.Allowed == true {
-					s.inboundId.Add(origin.Id)
+					tmpInboundId.Add(origin.Id)
 				}
 			}
+
+			if origin.Alarm != "none" {
+				alarmBeat.Add(origin.Id)
+			}
+		}
+		s.inboundId = tmpInboundId
+
+		var tmpDeleteList []string
+		for _, value := range s.alarmBeats {
+			if !alarmBeat.Contains(value.login) {
+				tmpDeleteList = append(tmpDeleteList, value.login)
+			} else {
+				alarmBeat.Remove(value.login)
+			}
+		}
+		// modify alarm list
+		s.modifyAlarmList(tmpDeleteList, alarmBeat)
+	}
+
+	log.Println("!! Policy inbound id list refresh complete")
+}
+
+func (s *PolicyServer) modifyAlarmList(tmpDeleteList []string, alarmBeat mapset.Set) {
+	s.alarmBeatsMu.Lock()
+	defer s.alarmBeatsMu.Unlock()
+
+	if len(tmpDeleteList) > 0 {
+		for _, delObj := range tmpDeleteList {
+			delete(s.alarmBeats, delObj)
 		}
 	}
 
-	// s.whitelist, err = s.storage.GetWhitelist()
-	s.whitelist2, err = s.db.GetBanWhitelist()
-	if err != nil {
-		log.Printf("Failed to get whitelist from backend: %v", err)
-		s.whitelist2 = nil
+	if alarmBeat != nil {
+		for value := range alarmBeat.Iter() {
+			s.alarmBeats[value.(string)] = &AlarmBeat{
+				updateAt: 0,
+				login:    value.(string),
+			}
+		}
 	}
-	log.Println("Policy state refresh complete")
 }
 
 func (s *PolicyServer) NewStats() *Stats {
@@ -287,6 +362,49 @@ func (s *PolicyServer) ApplyMalformedPolicy(ip string) bool {
 		return false
 	}
 	return true
+}
+
+func (s *PolicyServer) ApplyShareID(login string, validShare bool)  {
+	apply := s.CheckShareID(login)
+
+	if apply {
+		s.storage.WriteAlarmBeat(login, s.beatIntv * 2)
+	}
+}
+
+func (s *PolicyServer) CheckShareID(login string) bool {
+	now := util.MakeTimestamp() / 1000
+
+	s.alarmBeatsMu.Lock()
+	defer s.alarmBeatsMu.Unlock()
+
+	beat, exist := s.alarmBeats[login]
+	if exist {
+		if beat.updateAt < now {
+			beat.updateAt = now + s.beatIntv.Milliseconds()/1000
+			return true
+		}
+	}
+	return false
+}
+
+// InitAlarmBeat When the proxy server is turned on for the first time, put all the children who need an alarm.
+func (s *PolicyServer) InitAlarmBeat(beatIntv time.Duration) {
+	alarmList, err := s.db.GetAlarmInfo()
+	if err != nil {
+		return
+	}
+
+	if alarmList == nil || len(alarmList) == 0 {
+		return
+	}
+
+	var list []string
+	for _, data := range alarmList {
+		list = append(list, data.Id)
+	}
+
+	s.storage.InitAlarmBeat(list, beatIntv)
 }
 
 func (s *PolicyServer) ApplySharePolicy(ip string, validShare bool) bool {
@@ -389,7 +507,7 @@ func (s *PolicyServer) InIdBlackList(addy string) bool {
 }
 
 func (s *PolicyServer) InForceBanWhiteList(ip string) bool {
-	return s.whitelist2.Contains(ip)
+	return s.whitelist.Contains(ip)
 }
 
 func (s *PolicyServer) doBan(ip string) {
@@ -406,8 +524,6 @@ func (s *PolicyServer) doBan(ip string) {
 		log.Printf("CMD Error: %s", err)
 	}
 }
-
-
 
 func (x *Stats) heartbeat() {
 	now := util.MakeTimestamp()

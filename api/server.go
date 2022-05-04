@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cellcrypto/open-dangnn-pool/api/alarm"
 	"github.com/cellcrypto/open-dangnn-pool/hook"
 	"github.com/cellcrypto/open-dangnn-pool/util/plogger"
 	"log"
@@ -30,6 +31,9 @@ type ApiConfig struct {
 	PoolChartInterval       string `json:"poolChartInterval"`
 	MinerChartCheckInterval string `json:"minerChartCheckInterval"`
 	MinerChartInterval      string `json:"minerChartInterval"`
+	DeleteCheckInterval		string `json:"deleteCheckInterval"`
+	DeleteMaxRecord			int64  `json:"deleteMaxRecord"`
+	DeleteKeepRecord		int64  `json:"deleteKeepRecord"`
 	MinerPoolTimeout        string `json:"minerPoolTimeout"`
 	StatsCollectInterval    string `json:"statsCollectInterval"`
 	HashrateWindow          string `json:"hashrateWindow"`
@@ -43,6 +47,7 @@ type ApiConfig struct {
 	Coin                    string
 	Name                    string
 	Depth                   int64
+	Alarm					*alarm.Config	`json:"alarm"`
 	// In Shannon
 	Threshold      int64  `json:"threshold"`
 	AccessSecret   string `json:"AccessSecret"`
@@ -131,13 +136,30 @@ func (s *ApiServer) Start() {
 
 	s.minerPoolTimeout = util.MustParseDuration(s.config.MinerPoolTimeout)
 
+	var (
+		deleteCheckIntv time.Duration
+		deleteTimer *time.Timer
+	)
+	if s.config.DeleteCheckInterval != "" {
+		deleteCheckIntv = util.MustParseDuration(s.config.DeleteCheckInterval)
+		deleteTimer = time.NewTimer(deleteCheckIntv)
+	}
+
 	sort.Ints(s.config.LuckWindow)
+
+	s.config.Alarm.Coin = s.config.Coin
+	if s.config.Alarm.Enabled == true {
+		alarm.Start(s.config.Alarm,s.backend,s.db)
+	}
 
 	if s.config.PurgeOnly {
 		s.purgeStale()
 	} else {
 		s.purgeStale()
 		s.collectStats()
+		if deleteCheckIntv != 0 && deleteTimer != nil {
+			s.deleteDB()
+		}
 	}
 
 	go func() {
@@ -188,6 +210,18 @@ func (s *ApiServer) Start() {
 		}
 	}()
 
+	if deleteCheckIntv != 0 && deleteTimer != nil {
+		go func() {
+			for {
+				select {
+				case <-deleteTimer.C:
+					s.deleteDB()
+					deleteTimer.Reset(deleteCheckIntv)
+				}
+			}
+		}()
+	}
+
 	if !s.config.PurgeOnly {
 		s.listen()
 	}
@@ -225,6 +259,7 @@ func (s *ApiServer) authenticationMiddleware (next http.Handler) http.Handler {
 		if len(requestURL) > 1 {
 			switch requestURL[1] {
 			case "signin","token","health":
+				fmt.Println(requestURL[1])
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -372,6 +407,13 @@ func (s *ApiServer) listen() {
 	r.HandleFunc("/api/changepass", s.ChangePasswordIndex)
 	r.HandleFunc("/api/delaccount", s.DelAccounIndex)
 
+	r.HandleFunc("/api/changealarm", s.ChangeAlarmIndex)
+	r.HandleFunc("/api/changedesc", s.ChangeDescIndex)
+
+	r.HandleFunc("/api/applyid", s.ApplyInboundIDIndex)
+	r.HandleFunc("/api/applyip", s.ApplyInboundIPIndex)
+	r.HandleFunc("/api/applysub", s.ApplyMinerSbuIndex)
+
 	r.HandleFunc("/health", s.Health)
 
 	var c *cors.Cors
@@ -393,31 +435,7 @@ func (s *ApiServer) listen() {
 	r.NotFoundHandler = http.HandlerFunc(notFound)
 	r.Use(s.authenticationMiddleware )
 
-	err := r.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
-		pathTemplate, err := route.GetPathTemplate()
-		if err == nil {
-			fmt.Println("ROUTE:", pathTemplate)
-		}
-		pathRegexp, err := route.GetPathRegexp()
-		if err == nil {
-			fmt.Println("Path regexp:", pathRegexp)
-		}
-		queriesTemplates, err := route.GetQueriesTemplates()
-		if err == nil {
-			fmt.Println("Queries templates:", strings.Join(queriesTemplates, ","))
-		}
-		queriesRegexps, err := route.GetQueriesRegexp()
-		if err == nil {
-			fmt.Println("Queries regexps:", strings.Join(queriesRegexps, ","))
-		}
-		methods, err := route.GetMethods()
-		if err == nil {
-			fmt.Println("Methods:", strings.Join(methods, ","))
-		}
-		fmt.Println()
-		return nil
-	})
-
+	var err error
 	if c != nil {
 		err = http.ListenAndServe(s.config.Listen, c.Handler(r))
 	} else {
@@ -444,6 +462,43 @@ func (s *ApiServer) purgeStale() {
 	} else {
 		log.Printf("Purged stale stats from backend, %v shares affected, elapsed time %v", total, time.Since(start))
 	}
+}
+
+func (s *ApiServer) deleteDB() {
+	start := time.Now()
+
+	// Get the min max.
+	minSeq, maxSeq := s.db.GetBlockBalanceMinMax()
+	var (
+		tmpMax int64
+		count int64
+		total int64
+	)
+
+	deleteKeepRecord := s.config.DeleteKeepRecord
+	deleteMaxRecord := s.config.DeleteMaxRecord
+	if deleteKeepRecord == 0 || deleteMaxRecord == 0 {
+		return
+	}
+
+	for maxSeq - minSeq > deleteKeepRecord {
+		if maxSeq - deleteKeepRecord > minSeq + deleteMaxRecord {
+			tmpMax = minSeq + deleteMaxRecord -1
+		} else {
+			tmpMax = maxSeq - deleteKeepRecord
+		}
+
+		queryStart := time.Now()
+		result := s.db.DeleteBlockBalance(minSeq, tmpMax)
+
+		log.Printf("(%v) Deletes data from %d to %d in the credits_balance table. Rows Affected: %v", time.Since(queryStart), minSeq, tmpMax, result)
+
+		minSeq += deleteMaxRecord
+		count++
+		total += result
+	}
+
+	fmt.Printf("(%v) Amount of data deleted from DB: %v total delete record: %v\n", time.Since(start), count, total)
 }
 
 func (s *ApiServer) collectStats() {
@@ -954,6 +1009,7 @@ type UserToken struct {
 type DbIPInbound struct {
 	Ip string `json:"ip"`
 	Rule string `json:"rule"`
+	Alarm string `json:"alarm"`
 	Desc    string `json:"desc"`
 }
 
@@ -973,7 +1029,7 @@ func (s *ApiServer) InboundListIndex(w http.ResponseWriter, r *http.Request) {
 	inboundList, err := s.db.GetIpInboundList()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("Failed to UpdatePayoutLimit()")
+		log.Printf("Failed to GetIpInboundList()")
 		return
 	}
 
@@ -998,13 +1054,14 @@ func (s *ApiServer) SaveInboundIndex(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-
 	// validation data
 	if !util.StringInSlice(ipInbound.Rule,[]string{"allow", "deny"}) {
 		log.Printf("failed to incorrect value: %v", ipInbound.Rule)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+
+	ipInbound.Ip = strings.ToLower(ipInbound.Ip)
 
 	saveFlag := s.db.SaveIpInbound(ipInbound.Ip,ipInbound.Rule)
 
@@ -1069,7 +1126,7 @@ func (s *ApiServer) DevIdInboundListIndex(w http.ResponseWriter, r *http.Request
 	idboundList, err := s.db.GetIdInboundList()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("Failed to UpdatePayoutLimit()")
+		log.Printf("Failed to GetIdInboundList()")
 		return
 	}
 
@@ -1100,7 +1157,9 @@ func (s *ApiServer) SaveDevIdInboundIndex(w http.ResponseWriter, r *http.Request
 	if util.StringInSlice(ipInbound.Rule,[]string{"allow", "deny"}) == false {
 		return
 	}
-
+	if util.StringInSlice(ipInbound.Alarm,[]string{"none", "slack"}) == false {
+		return
+	}
 	var ok bool
 	if ipInbound.Ip, ok = util.CheckValidHexAddress(ipInbound.Ip); !ok {
 		log.Printf("failed to DevId: %v", ipInbound.Ip)
@@ -1108,7 +1167,9 @@ func (s *ApiServer) SaveDevIdInboundIndex(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	saveFlag := s.db.SaveIdInbound(ipInbound.Ip,ipInbound.Rule)
+	ipInbound.Ip = strings.ToLower(ipInbound.Ip)
+
+	saveFlag := s.db.SaveIdInbound(ipInbound.Ip, ipInbound.Rule, ipInbound.Alarm, ipInbound.Desc)
 
 	reply := make(map[string]interface{})
 	if saveFlag {
@@ -1183,8 +1244,8 @@ func (s *ApiServer) GetLikeDevSubListIndex(w http.ResponseWriter, r *http.Reques
 
 	devList, err := s.db.GetLikeMinerSubList(devSubList.DevId)
 	if err != nil {
+		log.Printf("Failed to GetLikeMinerSubList()")
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("Failed to UpdatePayoutLimit()")
 		return
 	}
 
@@ -1230,10 +1291,10 @@ func (s *ApiServer) SaveSubIdIndex(w http.ResponseWriter, r *http.Request) {
 
 
 	// Get the quantity and set the max value
-	devList, err := s.db.GetMinerSubList(lowerDevId)
+	devList, err := s.db.GetMinerSubInfo(lowerDevId)
 	if err != nil {
+		log.Printf("Failed to GetMinerSubInfo()")
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("Failed to UpdatePayoutLimit()")
 		return
 	}
 
@@ -1265,7 +1326,9 @@ func (s *ApiServer) SaveSubIdIndex(w http.ResponseWriter, r *http.Request) {
 	saveFlag := s.db.SaveSubIdIndex(lowerDevId, lowerSubId, addCount)
 	if saveFlag && devSubList.AllowId {
 		// Allow ID
-		s.db.SaveIdInbound(lowerDevId,"allow")
+		if !s.db.IsIdInboundId(lowerDevId) {
+			s.db.SaveIdInbound(lowerDevId,"allow", "none", "")
+		}
 	}
 
 	reply := make(map[string]interface{})
@@ -1356,7 +1419,7 @@ func (s *ApiServer) AddAccountIndex(w http.ResponseWriter, r *http.Request) {
 
 	if !s.db.CreateAccount(userToken.Username, hashedPassword, "none") {
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("Failed to UpdatePayoutLimit()")
+		log.Printf("Failed to CreateAccount()")
 		return
 	}
 
@@ -1525,8 +1588,8 @@ func (s *ApiServer) SignupIndex(w http.ResponseWriter, r *http.Request) {
 
 
 	if !s.db.CreateAccount(user.Username, hashedPassword, "none") {
+		log.Printf("Failed to CreateAccount()")
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("Failed to UpdatePayoutLimit()")
 		return
 	}
 
@@ -1549,8 +1612,8 @@ func (s *ApiServer) GetAccountListIndex(w http.ResponseWriter, r *http.Request) 
 
 	userInfo, err:= s.db.GetAccountList()
 	if err != nil {
+		log.Printf("Failed to GetAccountList()")
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("Failed to UpdatePayoutLimit()")
 		return
 	}
 
@@ -1566,64 +1629,6 @@ func (s *ApiServer) GetAccountListIndex(w http.ResponseWriter, r *http.Request) 
 		log.Println("Error serializing API response: ", err)
 	}
 }
-
-
-
-//
-//func (s *ApiServer) AccountIndexEx(w http.ResponseWriter, r *http.Request) {
-//	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-//	w.Header().Set("Access-Control-Allow-Origin", "*")
-//	w.Header().Set("Cache-Control", "no-cache")
-//
-//	login := strings.ToLower(mux.Vars(r)["login"])
-//	s.minersMu.Lock()
-//	defer s.minersMu.Unlock()
-//
-//	reply, ok := s.miners[login]
-//	now := util.MakeTimestamp()
-//	cacheIntv := int64(s.statsIntv / time.Millisecond)
-//	// Refresh stats if stale
-//	if !ok || reply.updatedAt < now-cacheIntv {
-//		exist, err := s.backend.IsMinerExists(login)
-//		if !exist {
-//			w.WriteHeader(http.StatusNotFound)
-//			return
-//		}
-//		if err != nil {
-//			w.WriteHeader(http.StatusInternalServerError)
-//			log.Printf("Failed to fetch stats from backend: %v", err)
-//			return
-//		}
-//
-//		stats, err := s.backend.GetMinerStats(login, s.config.Payments)
-//		if err != nil {
-//			w.WriteHeader(http.StatusInternalServerError)
-//			log.Printf("Failed to fetch stats from backend: %v", err)
-//			return
-//		}
-//		workers, err := s.backend.CollectWorkersAllStats(s.hashrateWindow, s.hashrateLargeWindow, login)
-//		if err != nil {
-//			w.WriteHeader(http.StatusInternalServerError)
-//			log.Printf("Failed to fetch stats from backend: %v", err)
-//			return
-//		}
-//		for key, value := range workers {
-//			stats[key] = value
-//		}
-//		stats["pageSize"] = s.config.Payments
-//		stats["minerCharts"], err = s.backend.GetMinerCharts(s.config.MinerChartsNum, login)
-//		//stats["paymentCharts"], err = s.backend.GetPaymentCharts(login)
-//		reply = &Entry{stats: stats, updatedAt: now}
-//		s.miners[login] = reply
-//	}
-//
-//	w.WriteHeader(http.StatusOK)
-//	err := json.NewEncoder(w).Encode(reply.stats)
-//	if err != nil {
-//		log.Println("Error serializing API response: ", err)
-//	}
-//}
-
 
 func (s *ApiServer) getStats() map[string]interface{} {
 	stats := s.stats.Load()
@@ -1656,7 +1661,7 @@ func (s *ApiServer) collectMinerCharts(login string, hash int64, largeHash int64
 	hour, min, _ := now.Clock()
 	t2 := fmt.Sprintf("%d-%02d-%02d %02d_%02d", year, month, day, hour, min)
 
-	log.Println("Miner "+login+" Hash is", ts, t2, hash, largeHash, share, report)
+	//log.Println("Miner "+login+" Hash is", ts, t2, hash, largeHash, share, report)
 	err := s.db.WriteMinerCharts(ts, t2, login, hash, largeHash, workerOnline, share, report)
 	// err := s.backend.WriteMinerCharts(ts, t2, login, hash, largeHash, workerOnline, share, report)
 	if err != nil {
@@ -1694,4 +1699,149 @@ func (s *ApiServer) CreateUserToken(id, access string, expirationMin int64) (str
 		return "", err
 	}
 	return token, nil
+}
+
+func (s *ApiServer) ApplyInboundIDIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+
+	_, err := s.backend.Publish(redis.ChannelProxy,redis.OpcodeLoadID, "", redis.ChannelApi)
+	if err != nil {
+		w.WriteHeader(http.StatusOK)
+		err = json.NewEncoder(w).Encode(map[string]string {
+			"status":"fail",
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(map[string]string {
+		"status":"ok",
+	})
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
+func (s *ApiServer) ApplyInboundIPIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+
+	_, err := s.backend.Publish(redis.ChannelProxy,redis.OpcodeLoadIP, "", redis.ChannelApi)
+	if err != nil {
+		w.WriteHeader(http.StatusOK)
+		err = json.NewEncoder(w).Encode(map[string]string {
+			"status":"fail",
+		})
+		return
+	}
+
+	_, err = s.backend.Publish(redis.ChannelProxy,redis.OpcodeWhiteList, "", redis.ChannelApi)
+	if err != nil {
+		w.WriteHeader(http.StatusOK)
+		err = json.NewEncoder(w).Encode(map[string]string {
+			"status":"fail",
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(map[string]string {
+		"status":"ok",
+	})
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
+func (s *ApiServer) ApplyMinerSbuIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+
+	_, err := s.backend.Publish(redis.ChannelProxy,redis.OpcodeMinerSub, "", redis.ChannelApi)
+	if err != nil {
+		w.WriteHeader(http.StatusOK)
+		err = json.NewEncoder(w).Encode(map[string]string {
+			"status":"fail",
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(map[string]string {
+		"status":"ok",
+	})
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
+func (s *ApiServer) ChangeAlarmIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	var idInbound DbIPInbound
+	if err := json.NewDecoder(r.Body).Decode(&idInbound); err != nil {
+		log.Printf("failed to Decode: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var ok bool
+	if idInbound.Ip, ok = util.CheckValidHexAddress(idInbound.Ip); !ok {
+		log.Printf("failed to DevId: %v", idInbound.Ip)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if util.StringInSlice(idInbound.Alarm,[]string{"none", "slack"}) == false {
+		return
+	}
+
+	s.db.UpdateIdInboundAlarm(idInbound.Ip, idInbound.Alarm)
+
+	w.WriteHeader(http.StatusOK)
+	err := json.NewEncoder(w).Encode(map[string]string {
+		"status":"ok",
+	})
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
+}
+
+
+func (s *ApiServer) ChangeDescIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	var idInbound DbIPInbound
+	if err := json.NewDecoder(r.Body).Decode(&idInbound); err != nil {
+		log.Printf("failed to Decode: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var ok bool
+	if idInbound.Ip, ok = util.CheckValidHexAddress(idInbound.Ip); !ok {
+		log.Printf("failed to DevId: %v", idInbound.Ip)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	s.db.UpdateIdInboundDesc(idInbound.Ip, idInbound.Desc)
+
+	w.WriteHeader(http.StatusOK)
+	err := json.NewEncoder(w).Encode(map[string]string {
+		"status":"ok",
+	})
+	if err != nil {
+		log.Println("Error serializing API response: ", err)
+	}
 }

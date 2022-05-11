@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/cellcrypto/open-dangnn-pool/storage/mysql"
 	"github.com/cellcrypto/open-dangnn-pool/storage/redis"
+	"github.com/cellcrypto/open-dangnn-pool/storage/types"
 	"github.com/cellcrypto/open-dangnn-pool/util"
 	"github.com/slack-go/slack"
 	"log"
@@ -26,18 +27,15 @@ type Entry struct {
 }
 
 type AlramServer struct {
-	config *Config
-
-	startedAt  int64
-	alarmMiners           map[string]*Entry
-	alarmMinersMu            sync.RWMutex
-	storage   *redis.RedisClient
-	db 		   *mysql.Database
-
-	// LastBeatCheckSec  time.Duration
-	AlarmCheckWaitSec int64
-
-	api 			*slack.Client
+	config  			*Config
+	startedAt   		int64
+	alarmList   		map[string]*types.InboundIdList
+	alarmMiners 		map[string]*Entry
+	alarmMinersMu   	sync.RWMutex
+	storage 			*redis.RedisClient
+	db  				*mysql.Database
+	AlarmCheckWaitSec   int64
+	api 				*slack.Client
 }
 
 func Start(cfg *Config, storage *redis.RedisClient, db *mysql.Database) *AlramServer  {
@@ -57,6 +55,8 @@ func Start(cfg *Config, storage *redis.RedisClient, db *mysql.Database) *AlramSe
 
 	a.api = slack.New(a.config.SlackBotToken)
 
+	// Make an alarm list.
+	a.MakeAlarmList()
 
 	log.Printf("Set Alaram check every %v", alarmChecktIntv)
 
@@ -79,14 +79,14 @@ func (a *AlramServer) alarmProcess()  {
 
 	now := util.MakeTimestamp() / 1000
 	// Call the alarm target from DB.
-	alarmList, err := a.db.GetAlarmInfo()
-	if err != nil {
-		return
-	}
-	if alarmList == nil || len(alarmList) == 0 {
-		return
-	}
+	a.alarmMinersMu.RLock()
+	alarmList := a.alarmList
+	a.alarmMinersMu.RUnlock()
 
+ 	if alarmList == nil || len(alarmList) == 0 {
+		fmt.Printf("[alarmProcess] non-existent alarm list.\n")
+		return
+	}
 
 	var alarmIds []string
 	for _, alarm := range alarmList {
@@ -103,7 +103,9 @@ func (a *AlramServer) alarmProcess()  {
 		alarmIds = append(alarmIds,alarm.Id)
 	}
 
+	fmt.Printf("[alarmProcess] searching alarm total list: %v send list: %v\n", len(alarmList), len(alarmIds))
 	if alarmIds == nil || len(alarmIds) == 0 {
+		// There is no one to send the alarm.
 		return
 	}
 
@@ -137,7 +139,7 @@ func (a *AlramServer) alarmProcess()  {
 	// Send a message to Slack.
 	if len(sendSlackList) > 0 {
 		a.SendMessageToSlack(sendSlackList)
-		fmt.Println(sendSlackList)
+		fmt.Printf("[alarmProcess]\n %v]\n", sendSlackList)
 	}
 }
 
@@ -161,4 +163,18 @@ func (a *AlramServer) SendMessageToSlack(msg string) error {
 
 	fmt.Printf("slack message post successfully %s at %s\n", channelID, timestamp)
 	return nil
+}
+
+func (a *AlramServer) MakeAlarmList() {
+	tmpAlarmList, err := a.db.GetAlarmInfo()
+	if err != nil {
+		panic("Failed to read alarm list.\n")
+		return
+	}
+
+	fmt.Printf("[MakeAlarmList] Load alarm list size: %v\n", len(tmpAlarmList))
+
+	a.alarmMinersMu.Lock()
+	a.alarmList = tmpAlarmList
+	a.alarmMinersMu.Unlock()
 }

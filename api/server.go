@@ -61,16 +61,41 @@ type ApiServer struct {
 	stats               atomic.Value
 	miners              map[string]*Entry
 	apiMiners           map[string]*Entry
-	db					*mysql.Database
+	db                  *mysql.Database
 	minersMu            sync.RWMutex
-	apiMinersMu            sync.RWMutex
+	apiMinersMu         sync.RWMutex
 	statsIntv           time.Duration
-	minerPoolTimeout	time.Duration
-	minerPoolChartIntv	int64
-	allowedOrigins		[]string
+	minerPoolTimeout    time.Duration
+	minerPoolChartIntv  int64
+	allowedOrigins      []string
+
+	alarm     *alarm.AlramServer
 
 	//poolChartIntv       time.Duration
 	//minerChartIntv      time.Duration
+}
+
+func (s *ApiServer) RedisMessage(payload string) {
+	splitData := strings.Split(payload,":")
+	if len(splitData) != 3 {
+		return
+	}
+	opcode := splitData[0]
+	from := splitData[1]
+	msg := splitData[2]
+	switch opcode {
+	case redis.OpcodeLoadID:
+		//if s.alarm != nil {
+		//	s.alarm.MakeAlarmList()	// can process it right away.
+		//}
+	case redis.OpcodeLoadIP:
+	case redis.OpcodeWhiteList:
+	case redis.OpcodeMinerSub:
+	default:
+		log.Printf("not defined opcode: %v", opcode)
+	}
+
+	fmt.Printf("(opcode:%v from:%s)RedisMessage: %s\n", opcode, from, msg)
 }
 
 type Entry struct {
@@ -147,9 +172,11 @@ func (s *ApiServer) Start() {
 
 	sort.Ints(s.config.LuckWindow)
 
+	s.backend.InitPubSub("api",s)
+
 	s.config.Alarm.Coin = s.config.Coin
 	if s.config.Alarm.Enabled == true {
-		alarm.Start(s.config.Alarm,s.backend,s.db)
+		s.alarm = alarm.Start(s.config.Alarm,s.backend,s.db)
 	}
 
 	if s.config.PurgeOnly {
@@ -1712,9 +1739,24 @@ func (s *ApiServer) ApplyInboundIDIndex(w http.ResponseWriter, r *http.Request) 
 		w.WriteHeader(http.StatusOK)
 		err = json.NewEncoder(w).Encode(map[string]string {
 			"status":"fail",
+			"msg":"Failed to send to proxy server",
 		})
 		return
 	}
+
+	if s.alarm != nil {
+		s.alarm.MakeAlarmList()	// can process it right away.
+	}
+	// Not sent to Redis and processed.
+	//_, err = s.backend.Publish(redis.ChannelApi,redis.OpcodeLoadID, "", redis.ChannelApi)
+	//if err != nil {
+	//	w.WriteHeader(http.StatusOK)
+	//	err = json.NewEncoder(w).Encode(map[string]string {
+	//		"status":"fail",
+	//		"msg":"Failed to send to api server",
+	//	})
+	//	return
+	//}
 
 	w.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(w).Encode(map[string]string {

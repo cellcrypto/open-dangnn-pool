@@ -80,24 +80,31 @@ var (
 	GenesisReword =   math.MustParseBig256("3000000000000000000")	// 300DGC = 3ETH
 	CarratReward =    math.MustParseBig256("3300000000000000000")	// 330DGC = 3.3ETH
 	DiffByShareValue            = int64(2000000000)
-	CarrathardforkheightMainnet = int64(500800)
+	CarrathardforkheightMainnet = int64(400000)
 	CarrathardforkheightTestnet = int64(641800)
 )
 
-func GetConstReward(height int64) *big.Int {
-	if height >= CarrathardforkheightTestnet {
-		return new(big.Int).Set(CarratReward)
+func GetConstReward(height int64, mainnet bool) *big.Int {
+	if mainnet == true {
+		if height >= CarrathardforkheightMainnet {
+			return new(big.Int).Set(CarratReward)
+		}
+
+	} else {
+		if height >= CarrathardforkheightTestnet {
+			return new(big.Int).Set(CarratReward)
+		}
 	}
 	return new(big.Int).Set(GenesisReword)
 }
 
-func GetRewardForUncle(height int64) *big.Int {
-	reward := GetConstReward(height)
+func GetRewardForUncle(height int64, mainnet bool) *big.Int {
+	reward := GetConstReward(height, mainnet)
 	return new(big.Int).Div(reward, new(big.Int).SetInt64(32))
 }
 
-func GetUncleReward(uHeight, height int64) *big.Int {
-	reward := GetConstReward(height)
+func GetUncleReward(uHeight, height int64, mainnet bool) *big.Int {
+	reward := GetConstReward(height, mainnet)
 	k := height - uHeight
 	reward.Mul(big.NewInt(8-k), reward)
 	reward.Div(reward, big.NewInt(8))

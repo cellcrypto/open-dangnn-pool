@@ -4,7 +4,9 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/cellcrypto/open-dangnn-pool/hook"
+	"github.com/cellcrypto/open-dangnn-pool/util"
 	"log"
 	"math/rand"
 	"os"
@@ -38,7 +40,11 @@ func startApi() {
 }
 
 func startBlockUnlocker() {
-	u := payouts.NewBlockUnlocker(&cfg.BlockUnlocker, backend, db)
+	if util.StringInSlice(cfg.Net,[]string{"mainnet", "testnet"}) == false {
+		fmt.Println("config file error MainNet or testnet cannot be set")
+		return
+	}
+	u := payouts.NewBlockUnlocker(&cfg.BlockUnlocker, backend, db, cfg.Net)
 	u.Start()
 }
 

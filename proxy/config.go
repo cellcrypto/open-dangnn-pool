@@ -17,8 +17,10 @@ type Config struct {
 
 	Threads int `json:"threads"`
 
-	Coin  string         `json:"coin"`
-	Pplns int64        `json:"pplns"`
+	Coin  string        `json:"coin"`
+	Pplns int64        	`json:"pplns"`
+	Net string          `json:"net"`
+
 	Redis redis.Config `json:"redis"`
 	Mysql mysql.Config `json:"mysql"`
 

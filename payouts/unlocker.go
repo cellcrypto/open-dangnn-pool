@@ -47,9 +47,10 @@ type BlockUnlocker struct {
 	rpc      *rpc.RPCClient
 	halt     bool
 	lastFail error
+	mainNet  bool
 }
 
-func NewBlockUnlocker(cfg *UnlockerConfig, backend *redis.RedisClient, db *mysql.Database) *BlockUnlocker {
+func NewBlockUnlocker(cfg *UnlockerConfig, backend *redis.RedisClient, db *mysql.Database, mainnet string) *BlockUnlocker {
 	if len(cfg.PoolFeeAddress) != 0 && !util.IsValidHexAddress(cfg.PoolFeeAddress) {
 		log.Fatalln("Invalid poolFeeAddress", cfg.PoolFeeAddress)
 	}
@@ -59,7 +60,19 @@ func NewBlockUnlocker(cfg *UnlockerConfig, backend *redis.RedisClient, db *mysql
 	if cfg.ImmatureDepth < minDepth {
 		log.Fatalf("Immature depth can't be < %v, your depth is %v", minDepth, cfg.ImmatureDepth)
 	}
-	u := &BlockUnlocker{config: cfg, backend: backend,db: db}
+	net := true
+	if mainnet != "testnet" {
+		net = true
+	} else {
+		net = false
+	}
+
+	u := &BlockUnlocker{
+		config: cfg,
+		backend: backend,
+		db: db,
+		mainNet: net,
+	}
 	u.rpc = rpc.NewRPCClient("BlockUnlocker", cfg.Daemon, cfg.Timeout)
 	return u
 }
@@ -174,7 +187,7 @@ func (u *BlockUnlocker) unlockCandidates(candidates []*types.BlockData) (*Unlock
 					orphan = false
 					result.uncles++
 
-					err := handleUncle(height, uncle, candidate)
+					err := u.handleUncle(height, uncle, candidate)
 					if err != nil {
 						u.halt = true
 						u.lastFail = err
@@ -224,7 +237,7 @@ func (u *BlockUnlocker) handleBlock(block *rpc.GetBlockReply, candidate *types.B
 		return err
 	}
 	candidate.Height = correctHeight
-	reward := types.GetConstReward(candidate.Height)
+	reward := types.GetConstReward(candidate.Height, u.mainNet)
 
 	// Add TX fees
 	extraTxReward, err := u.getExtraRewardForTx(block)
@@ -238,7 +251,7 @@ func (u *BlockUnlocker) handleBlock(block *rpc.GetBlockReply, candidate *types.B
 	}
 
 	// Add reward for including uncles
-	uncleReward := types.GetRewardForUncle(candidate.Height)
+	uncleReward := types.GetRewardForUncle(candidate.Height, u.mainNet)
 	rewardForUncles := big.NewInt(0).Mul(uncleReward, big.NewInt(int64(len(block.Uncles))))
 	reward.Add(reward, rewardForUncles)
 
@@ -248,12 +261,12 @@ func (u *BlockUnlocker) handleBlock(block *rpc.GetBlockReply, candidate *types.B
 	return nil
 }
 
-func handleUncle(height int64, uncle *rpc.GetBlockReply, candidate *types.BlockData) error {
+func (u *BlockUnlocker) handleUncle(height int64, uncle *rpc.GetBlockReply, candidate *types.BlockData) error {
 	uncleHeight, err := strconv.ParseInt(strings.Replace(uncle.Number, "0x", "", -1), 16, 64)
 	if err != nil {
 		return err
 	}
-	reward := types.GetUncleReward(uncleHeight, height)
+	reward := types.GetUncleReward(uncleHeight, height, u.mainNet)
 	if reward.Cmp(big.NewInt(0)) < 0 {
 		reward = big.NewInt(0)
 	}

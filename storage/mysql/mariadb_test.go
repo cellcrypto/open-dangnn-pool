@@ -30,6 +30,8 @@ func TestMain(m *testing.M) {
 	os.Exit(c)
 }
 
+var mainnetFlag = true
+
 func TestCreditsBlocksCheck(t *testing.T)  {
 
 	Daemon := "http://127.0.0.1:8545"
@@ -116,11 +118,11 @@ func TestCreditsBlocksCheck(t *testing.T)  {
 
 		blockHeight, _ := strconv.ParseInt(strings.Replace(block.Number, "0x", "", -1), 16, 64)
 		// Basic block creation reward
-		createReward := types.GetConstReward(blockHeight)
+		createReward := types.GetConstReward(blockHeight, mainnetFlag)
 
 		// Rewards including Uncle.
 		uncleReward := new(big.Int)
-		uncleReward = uncleReward.Mul(types.GetRewardForUncle(blockHeight), big.NewInt(int64(len(block.Uncles))))
+		uncleReward = uncleReward.Mul(types.GetRewardForUncle(blockHeight, mainnetFlag), big.NewInt(int64(len(block.Uncles))))
 
 		// Transaction Fee Processing Rewards
 		amount := big.NewInt(0)

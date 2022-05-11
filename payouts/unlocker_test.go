@@ -13,6 +13,8 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+var mainnetFlag = bool(true)
+
 func TestCalculateRewards(t *testing.T) {
 	blockReward, _ := new(big.Rat).SetString("5000000000000000000")
 	shares := map[string]int64{"0x0": 1000000, "0x1": 20000, "0x2": 5000, "0x3": 10, "0x4": 1}
@@ -78,7 +80,7 @@ func TestGetUncleReward(t *testing.T) {
 		7: "625000000000000000",
 	}
 	for i := int64(1); i < 8; i++ {
-		rewards[i] = types.GetUncleReward(1, i+1).String()
+		rewards[i] = types.GetUncleReward(1, i+1, mainnetFlag).String()
 	}
 	for i, reward := range rewards {
 		if expectedRewards[i] != rewards[i] {
@@ -99,7 +101,7 @@ func TestGetByzantiumUncleReward(t *testing.T) {
 		7: "375000000000000000",
 	}
 	for i := int64(1); i < 8; i++ {
-		rewards[i] = types.GetUncleReward(byzantiumHardForkHeight, byzantiumHardForkHeight+i).String()
+		rewards[i] = types.GetUncleReward(byzantiumHardForkHeight, byzantiumHardForkHeight+i, mainnetFlag).String()
 	}
 	for i, reward := range rewards {
 		if expectedRewards[i] != rewards[i] {
@@ -130,7 +132,7 @@ func TestGetCarrotUncleReward(t *testing.T) {
 }
 
 func TestGetCarrotRewardForUngle(t *testing.T) {
-	reward := types.GetRewardForUncle(types.CarrathardforkheightMainnet).String()
+	reward := types.GetRewardForUncle(types.CarrathardforkheightMainnet, mainnetFlag).String()
 	expectedReward := "103125000000000000"
 	if expectedReward != reward {
 		t.Errorf("Incorrect uncle bonus for height %v, expected %v vs %v", byzantiumHardForkHeight, expectedReward, reward)
@@ -139,7 +141,7 @@ func TestGetCarrotRewardForUngle(t *testing.T) {
 
 
 func TestGetRewardForUngle(t *testing.T) {
-	reward := types.GetRewardForUncle(1).String()
+	reward := types.GetRewardForUncle(1, mainnetFlag).String()
 	expectedReward := "156250000000000000"
 	if expectedReward != reward {
 		t.Errorf("Incorrect uncle bonus for height %v, expected %v vs %v", 1, expectedReward, reward)
@@ -147,7 +149,7 @@ func TestGetRewardForUngle(t *testing.T) {
 }
 
 func TestGetByzantiumRewardForUngle(t *testing.T) {
-	reward := types.GetRewardForUncle(byzantiumHardForkHeight).String()
+	reward := types.GetRewardForUncle(byzantiumHardForkHeight, mainnetFlag).String()
 	expectedReward := "93750000000000000"
 	if expectedReward != reward {
 		t.Errorf("Incorrect uncle bonus for height %v, expected %v vs %v", byzantiumHardForkHeight, expectedReward, reward)

@@ -70,9 +70,9 @@ type PayoutsProcessor struct {
 	lastFail error
 }
 
-func NewPayoutsProcessor(cfg *PayoutsConfig, backend *redis.RedisClient, db *mysql.Database) *PayoutsProcessor {
+func NewPayoutsProcessor(cfg *PayoutsConfig, backend *redis.RedisClient, db *mysql.Database, netId int64) *PayoutsProcessor {
 	u := &PayoutsProcessor{config: cfg, backend: backend, db: db}
-	u.rpc = rpc.NewRPCClient("PayoutsProcessor", cfg.Daemon, cfg.Timeout)
+	u.rpc = rpc.NewRPCClient("PayoutsProcessor", cfg.Daemon, cfg.Timeout, netId)
 	return u
 }
 

@@ -74,7 +74,7 @@ func NewProxy(cfg *Config, backend *redis.RedisClient, db *mysql.Database) *Prox
 
 	proxy.upstreams = make([]*rpc.RPCClient, len(cfg.Upstream))
 	for i, v := range cfg.Upstream {
-		proxy.upstreams[i] = rpc.NewRPCClient(v.Name, v.Url, v.Timeout)
+		proxy.upstreams[i] = rpc.NewRPCClient(v.Name, v.Url, v.Timeout, cfg.NetId)
 		log.Printf("Upstream: %s => %s", v.Name, v.Url)
 	}
 	log.Printf("Default upstream: %s => %s", proxy.rpc().Name, proxy.rpc().Url)

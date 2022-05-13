@@ -50,7 +50,7 @@ type BlockUnlocker struct {
 	mainNet  bool
 }
 
-func NewBlockUnlocker(cfg *UnlockerConfig, backend *redis.RedisClient, db *mysql.Database, mainnet string) *BlockUnlocker {
+func NewBlockUnlocker(cfg *UnlockerConfig, backend *redis.RedisClient, db *mysql.Database, mainnet string, netId int64) *BlockUnlocker {
 	if len(cfg.PoolFeeAddress) != 0 && !util.IsValidHexAddress(cfg.PoolFeeAddress) {
 		log.Fatalln("Invalid poolFeeAddress", cfg.PoolFeeAddress)
 	}
@@ -73,7 +73,7 @@ func NewBlockUnlocker(cfg *UnlockerConfig, backend *redis.RedisClient, db *mysql
 		db: db,
 		mainNet: net,
 	}
-	u.rpc = rpc.NewRPCClient("BlockUnlocker", cfg.Daemon, cfg.Timeout)
+	u.rpc = rpc.NewRPCClient("BlockUnlocker", cfg.Daemon, cfg.Timeout, netId)
 	return u
 }
 

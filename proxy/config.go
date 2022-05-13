@@ -20,6 +20,7 @@ type Config struct {
 	Coin  string        `json:"coin"`
 	Pplns int64        	`json:"pplns"`
 	Net string          `json:"net"`
+	NetId int64          `json:"netid"`
 
 	Redis redis.Config `json:"redis"`
 	Mysql mysql.Config `json:"mysql"`

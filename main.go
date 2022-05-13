@@ -44,12 +44,12 @@ func startBlockUnlocker() {
 		fmt.Println("config file error MainNet or testnet cannot be set")
 		return
 	}
-	u := payouts.NewBlockUnlocker(&cfg.BlockUnlocker, backend, db, cfg.Net)
+	u := payouts.NewBlockUnlocker(&cfg.BlockUnlocker, backend, db, cfg.Net, cfg.NetId)
 	u.Start()
 }
 
 func startPayoutsProcessor() {
-	u := payouts.NewPayoutsProcessor(&cfg.Payouts, backend, db)
+	u := payouts.NewPayoutsProcessor(&cfg.Payouts, backend, db, cfg.NetId)
 	u.Start()
 }
 
@@ -124,7 +124,6 @@ func main() {
 	log.Printf("connected mysql host:%v",cfg.Mysql.Endpoint)
 
 	hook.RegistryMainHook(func() {
-
 		logger.Close()	// Save all logs.
 	})
 

@@ -31,12 +31,13 @@ func TestMain(m *testing.M) {
 }
 
 var mainnetFlag = true
+var netId = int64(59003)
 
 func TestCreditsBlocksCheck(t *testing.T)  {
 
 	Daemon := "http://127.0.0.1:8545"
 	Timeout := "10s"
-	rpc := rpc.NewRPCClient("BlockChecker", Daemon, Timeout)
+	rpc := rpc.NewRPCClient("BlockChecker", Daemon, Timeout, netId)
 
 	var (
 		countBlock int64
@@ -161,7 +162,7 @@ func TestPayoutTxCheck(t *testing.T)  {
 
 	Daemon := "http://127.0.0.1:8545"
 	Timeout := "10s"
-	rpc := rpc.NewRPCClient("BlockChecker", Daemon, Timeout)
+	rpc := rpc.NewRPCClient("BlockChecker", Daemon, Timeout, netId)
 
 	var (
 		count int64

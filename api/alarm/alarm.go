@@ -71,7 +71,6 @@ func Start(cfg *Config, storage *redis.RedisClient, db *mysql.Database) *AlramSe
 			}
 		}
 	}()
-	
 	return a
 }
 

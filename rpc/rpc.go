@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math/big"
 	"net/http"
 	"strconv"
@@ -80,11 +81,20 @@ type JSONRpcResp struct {
 	Error  map[string]interface{} `json:"error"`
 }
 
-func NewRPCClient(name, url, timeout string) *RPCClient {
+func NewRPCClient(name, url, timeout string, netId int64) *RPCClient {
 	rpcClient := &RPCClient{Name: name, Url: url}
 	timeoutIntv := util.MustParseDuration(timeout)
 	rpcClient.client = &http.Client{
 		Timeout: timeoutIntv,
+	}
+	rpcNetId, err := rpcClient.GetNetVersion()
+	if err != nil {
+		log.Fatal("no rpc connection")
+		return nil
+	}
+	if netId != rpcNetId {
+		log.Fatalf("Mismatch netId cfg:%v rpc:%v", netId, rpcNetId)
+		return nil
 	}
 	return rpcClient
 }
@@ -204,6 +214,19 @@ func (r *RPCClient) GetPeerCount() (int64, error) {
 		return 0, err
 	}
 	return strconv.ParseInt(strings.Replace(reply, "0x", "", -1), 16, 64)
+}
+
+func (r *RPCClient) GetNetVersion() (int64, error) {
+	rpcResp, err := r.doPost(r.Url, "net_version", nil)
+	if err != nil {
+		return 0, err
+	}
+	var reply string
+	err = json.Unmarshal(*rpcResp.Result, &reply)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.ParseInt(reply, 10, 64)
 }
 
 func (r *RPCClient) SendTransaction(from, to, gas, gasPrice, value string, autoGas bool) (string, error) {

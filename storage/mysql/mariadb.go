@@ -737,10 +737,10 @@ func (d *Database) makeMaturedBlcokSQL(block *types.BlockData,roundRewards map[s
 
 		creditsBalanceSql.WriteString(" ON DUPLICATE KEY UPDATE insert_cnt=insert_cnt+1,amount=VALUES(amount)")
 		minerBalanceSql.WriteString(" ON DUPLICATE KEY UPDATE balance=balance+VALUES(balance)")
-		financesSql = fmt.Sprintf("UPDATE finances SET balance=balance+%v,last_height=%v,last_hash=\"%v\",total_mined=%v WHERE coin=\"%v\"",
+		financesSql = fmt.Sprintf("UPDATE finances SET balance=balance+%v,last_height=%v,last_hash=\"%v\",total_mined=total_mined+%v WHERE coin=\"%v\"",
 							total, strconv.FormatInt(block.Height, 10), block.Hash, block.RewardInShannon(), d.Config.Coin)
 	} else {
-		financesSql = fmt.Sprintf("UPDATE finances SET last_height=%v,last_hash=\"%v\",total_mined=%v WHERE coin=\"%v\"",
+		financesSql = fmt.Sprintf("UPDATE finances SET last_height=%v,last_hash=\"%v\",total_mined=total_mined+%v WHERE coin=\"%v\"",
 			strconv.FormatInt(block.Height, 10), block.Hash, block.RewardInShannon(), d.Config.Coin)
 	}
 

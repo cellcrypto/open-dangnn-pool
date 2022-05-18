@@ -58,24 +58,26 @@ export default Ember.Route.extend({
       var res_devid = devAddr.match(/\b0x[0-9A-Fa-f]{40}|[0-9A-Fa-f]{40}\b/g);
       var res_subid = subAddr.match(/\b0x[0-9A-Fa-f]{40}|[0-9A-Fa-f]{40}\b/g);
       console.log(res_devid,devAddr);
-      if (res_devid && res_subid) {
-        var r = this;
-        var url = config.APP.ApiUrl + 'api/delsubid';
-        return Ember.$.ajax({
-          method: 'post',
-          url: url,
-          crossDomain: true,
-          xhrFields: {
-            withCredentials: true
-          },
-          data: JSON.stringify({
-            devid: devAddr,
-            subid: subAddr,
+      if (confirm("["+res_devid+"]\n["+res_subid+"]\n**Import** Do you really want to delete id?")) {
+        if (res_devid && res_subid) {
+          var r = this;
+          var url = config.APP.ApiUrl + 'api/delsubid';
+          return Ember.$.ajax({
+            method: 'post',
+            url: url,
+            crossDomain: true,
+            xhrFields: {
+              withCredentials: true
+            },
+            data: JSON.stringify({
+              devid: devAddr,
+              subid: subAddr,
+            })
+          }).then(function(data) {
+            Ember.run.later(r, r.refresh, 10);
+            return data;
           })
-        }).then(function(data) {
-          Ember.run.later(r, r.refresh, 10);
-          return data;
-        })
+        }
       }
     },
     pop() {

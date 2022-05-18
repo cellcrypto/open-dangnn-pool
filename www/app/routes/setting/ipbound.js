@@ -33,22 +33,24 @@ export default Ember.Route.extend({
     },
     delete(newValue) {
       console.log(newValue);
-      var r = this;
-      var url = config.APP.ApiUrl + 'api/delinbound';
-      return Ember.$.ajax({
-        method: 'post',
-        url: url,
-        crossDomain: true,
-        xhrFields: {
-          withCredentials: true
-        },
-        data: JSON.stringify({
-          ip: newValue,
-        })
-      }).then(function(data) {
-        Ember.run.later(r, r.refresh, 10);
-        return data;
-      });
+      if (confirm("["+newValue+"]\n**Import** Do you really want to delete ip?")) {
+        var r = this;
+        var url = config.APP.ApiUrl + 'api/delinbound';
+        return Ember.$.ajax({
+          method: 'post',
+          url: url,
+          crossDomain: true,
+          xhrFields: {
+            withCredentials: true
+          },
+          data: JSON.stringify({
+            ip: newValue,
+          })
+        }).then(function(data) {
+          Ember.run.later(r, r.refresh, 10);
+          return data;
+        });
+      }
     },
     pop() {
       if (confirm("**Import** Do you really want to apply ip?")) {

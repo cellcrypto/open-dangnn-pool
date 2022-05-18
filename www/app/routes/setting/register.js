@@ -43,21 +43,23 @@ export default Ember.Route.extend({
     },
     delete(newValue) {
       console.log(newValue);
-      var r = this;
-      var url = config.APP.ApiUrl + 'api/delaccount';
-      return Ember.$.ajax({
-        method: 'post',
-        url: url,
-        crossDomain: true,
-        xhrFields: {
-          withCredentials: true
-        },
-        data: JSON.stringify({
-          username: newValue,
-        })
-      }).then(function(data) {
-        return data;
-      });
+      if (confirm("["+newValue+"]\n**Import** Do you really want to delete id?")) {
+        var r = this;
+        var url = config.APP.ApiUrl + 'api/delaccount';
+        return Ember.$.ajax({
+          method: 'post',
+          url: url,
+          crossDomain: true,
+          xhrFields: {
+            withCredentials: true
+          },
+          data: JSON.stringify({
+            username: newValue,
+          })
+        }).then(function(data) {
+          return data;
+        });
+      }
     },
     changeAccess(newValue) {
       console.log(newValue);

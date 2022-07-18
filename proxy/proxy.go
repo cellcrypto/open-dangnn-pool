@@ -35,6 +35,7 @@ type ProxyServer struct {
 	policy             *policy.PolicyServer
 	hashrateExpiration time.Duration
 	failsCount         int64
+	reportRatesMu sync.RWMutex
 	reportRates		   map[string]*ReportedRate
 
 	// Stratum

@@ -111,8 +111,11 @@ func (s *ProxyServer) handleUnknownRPC(cs *Session, m string) *ErrorReply {
 }
 
 func (s *ProxyServer) handleSubmitHashRateRPC(cs *Session, login string, rate string, WorkerId string) *ErrorReply {
-	ret := s.reportRates[login]
 	ts := util.MakeTimestamp() / 1000
+
+	s.reportRatesMu.RLock()
+	ret := s.reportRates[login]
+	s.reportRatesMu.RUnlock()
 
 	if ret != nil && ret.insertTime + 600 > ts {
 		return &ErrorReply{Code: -3, Message: "Method not found"}
@@ -135,10 +138,17 @@ func (s *ProxyServer) handleSubmitHashRateRPC(cs *Session, login string, rate st
 
 	s.backend.SetReportedtHashrates(mapLogins, WorkerId)
 
+	s.WriteMapReportRate(login, reported, ts)
+
+	return &ErrorReply{Code: -3, Message: "Method not found"}
+}
+
+// WriteMapReportRate is Set a lock on the map
+func (s *ProxyServer) WriteMapReportRate(login string, reported int64, ts int64) {
+	s.reportRatesMu.Lock()
+	defer s.reportRatesMu.Unlock()
 	s.reportRates[login] = &ReportedRate{
 		rate:       reported,
 		insertTime: ts,
 	}
-
-	return &ErrorReply{Code: -3, Message: "Method not found"}
 }
